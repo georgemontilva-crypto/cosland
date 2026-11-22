@@ -9,16 +9,36 @@ import { Avatar, Empty, Loading, useToast } from "@/components/ui";
 function Thread({ id }: { id: number }) {
   const toast = useToast();
   const utils = trpc.useUtils();
-  const q = trpc.chat.thread.useQuery({ id }, { refetchInterval: 5000, retry: false });
+  const q = trpc.chat.thread.useQuery({ id }, { refetchInterval: 45_000, retry: false });
   const [body, setBody] = useState("");
   const [offer, setOffer] = useState("");
   const [offering, setOffering] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const count = q.data?.messages.length ?? 0;
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); utils.auth.me.invalidate(); utils.chat.list.invalidate(); }, [count, id]);
+  // El mensaje aparece al instante; si el envío falla, se retira y vuelve al cuadro de texto
   const send = trpc.chat.send.useMutation({
-    onSuccess: () => { setBody(""); setOffer(""); setOffering(false); utils.chat.thread.invalidate({ id }); },
-    onError: (e) => toast(e.message, true),
+    onMutate: async (v) => {
+      await utils.chat.thread.cancel({ id });
+      const prev = utils.chat.thread.getData({ id });
+      if (prev) {
+        utils.chat.thread.setData({ id }, {
+          ...prev,
+          messages: [...prev.messages, {
+            id: -Date.now(), senderId: prev.me, body: v.body, offerCents: v.offer != null ? Math.round(v.offer * 100) : null, createdAt: new Date().toISOString(),
+            listingId: null, listingTitle: null, listingImages: null, listingPrice: null, listingDeal: null,
+          }],
+        });
+      }
+      setBody(""); setOffer(""); setOffering(false);
+      return { prev, text: v.body };
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.prev) utils.chat.thread.setData({ id }, ctx.prev);
+      if (ctx) setBody(ctx.text);
+      toast(e.message, true);
+    },
+    onSettled: () => utils.chat.thread.invalidate({ id }),
   });
 
   if (q.isLoading) return <Loading />;
@@ -70,7 +90,7 @@ function Thread({ id }: { id: number }) {
           {!offering && <button type="button" className="btn btn-sm btn-yuzu shrink-0 !min-h-[2.875rem]" onClick={() => setOffering(true)}>Ofertar</button>}
           <textarea className="input !min-h-[2.875rem] !rounded-[1.4rem]" rows={1} placeholder="Escribe un mensaje" value={body} onChange={(e) => setBody(e.target.value)} maxLength={2000}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !("ontouchstart" in window)) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} aria-label="Mensaje" />
-          <button className="btn btn-ink shrink-0 !px-4" disabled={send.isPending || (!body.trim() && !offer)} aria-label="Enviar"><Send size={18} /></button>
+          <button className="btn btn-ink shrink-0 !px-4" disabled={!body.trim() && !offer} aria-label="Enviar"><Send size={18} /></button>
         </div>
       </form>
     </div>
@@ -79,7 +99,7 @@ function Thread({ id }: { id: number }) {
 
 export default function Messages({ id }: { id?: number }) {
   const { me, loading } = useMe();
-  const list = trpc.chat.list.useQuery(undefined, { enabled: Boolean(me), refetchInterval: 15000 });
+  const list = trpc.chat.list.useQuery(undefined, { enabled: Boolean(me), refetchInterval: 60_000 });
   if (loading) return <Loading />;
   if (!me) return <div className="wrap py-14"><Empty title="Entra para ver tus mensajes" action={<Link href="/entrar?volver=/mensajes" className="btn btn-ink">Entrar</Link>} /></div>;
 

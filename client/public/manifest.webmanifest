@@ -1,13 +1,24 @@
 {
+  "id": "/",
   "name": "Cosland",
   "short_name": "Cosland",
   "description": "El mercado de la comunidad cosplayer, otaku y geek.",
+  "lang": "es",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#FBF1DC",
-  "theme_color": "#FBF1DC",
+  "orientation": "portrait",
+  "background_color": "#fbf1dc",
+  "theme_color": "#fbf1dc",
+  "categories": ["shopping", "lifestyle"],
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Publicar", "url": "/publicar", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Mensajes", "url": "/mensajes", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Explorar", "url": "/explorar", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
   ]
 }

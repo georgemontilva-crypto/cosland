@@ -2,7 +2,8 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { Compass, Heart, Home as HomeIcon, LogOut, MessageCircle, Plus, Search, Shield, Store, User } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { useMe } from "@/lib/hooks";
+import { useMe, useRealtime } from "@/lib/hooks";
+import InstallHint from "./InstallHint";
 import { Avatar } from "./ui";
 
 function SearchBox({ className = "" }: { className?: string }) {
@@ -49,6 +50,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [path] = useLocation();
   const { me } = useMe();
   const inChat = path.startsWith("/mensajes/");
+  useRealtime(me?.id ?? null);
   const navLink = (href: string, label: string) => (
     <Link href={href} className={`px-3.5 py-2 rounded-full font-bold ${path.startsWith(href) ? "bg-oat" : "hover:bg-oat"}`}>{label}</Link>
   );
@@ -115,6 +117,8 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         </footer>
       )}
+
+      {!inChat && <InstallHint />}
 
       {/* Barra inferior en el teléfono */}
       <nav className={`md:hidden fixed bottom-0 inset-x-0 z-30 bg-paper border-t-[1.5px] border-ink items-end pb-[env(safe-area-inset-bottom)] ${inChat ? "hidden" : "flex"}`} aria-label="Navegación">

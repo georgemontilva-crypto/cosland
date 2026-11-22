@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { TRPCError } from "@trpc/server";
 import { and, or, eq, ne, like, desc, asc, sql, inArray, gte, lte, type SQL } from "drizzle-orm";
 import { db } from "./db";
+import { publish } from "./realtime";
 import {
   users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports,
 } from "./schema";
@@ -339,6 +340,15 @@ async function postMessage(convId: number, senderId: number, fromSeller: boolean
     lastBody: body.slice(0, 200), lastAt: new Date(),
     ...(fromSeller ? { buyerUnread: sql`${conversations.buyerUnread} + 1` } : { sellerUnread: sql`${conversations.sellerUnread} + 1` }),
   }).where(eq(conversations.id, convId));
+  // Aviso en vivo a las dos personas de la conversación
+  const [who] = await db.select({ buyerId: conversations.buyerId, ownerId: shops.userId, shopName: shops.name, buyerName: users.name })
+    .from(conversations).innerJoin(shops, eq(shops.id, conversations.shopId)).innerJoin(users, eq(users.id, conversations.buyerId))
+    .where(eq(conversations.id, convId)).limit(1);
+  if (who) {
+    publish([who.buyerId, who.ownerId], "chat", {
+      conversationId: convId, from: senderId, fromName: fromSeller ? who.shopName : who.buyerName, preview: body.slice(0, 80),
+    });
+  }
 }
 
 async function openConversation(buyerId: number, shopId: number) {

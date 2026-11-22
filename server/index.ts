@@ -12,6 +12,7 @@ import { createContext, userFromRequest } from "./trpc";
 import { db, runMigrations } from "./db";
 import { listings, shops, users } from "./schema";
 import { saveImage, UPLOAD_DIR, storageMode } from "./storage";
+import { subscribe } from "./realtime";
 import { formatPrice } from "../shared/catalog";
 
 const app = express();
@@ -41,6 +42,19 @@ app.post("/api/upload", uploadLimiter, upload.single("file"), async (req, res) =
 });
 app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "365d", immutable: true }));
 
+// Canal en vivo para el chat: la conexión queda abierta y el servidor empuja los avisos
+app.get("/api/events", async (req, res) => {
+  const user = await userFromRequest(req);
+  if (!user) return res.status(401).end();
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no",
+  });
+  res.write("retry: 3000\n\n");
+  const off = subscribe(user.id, res);
+  const beat = setInterval(() => res.write(": ping\n\n"), 25_000);
+  req.on("close", () => { clearInterval(beat); off(); });
+});
+
 app.use("/api/trpc", express.json({ limit: "200kb" }), createExpressMiddleware({ router: appRouter, createContext }));
 
 /* ── Cliente (producción): archivos estáticos + vista previa al compartir enlaces ── */
@@ -64,6 +78,7 @@ if (fs.existsSync(path.join(publicDir, "index.html"))) {
   };
   const base = { title: "Cosland: compra y vende cosplay, figuras y más", description: "El mercado de la comunidad cosplayer, otaku y geek. Abre tu vitrina y vende lo que ya no usas." };
 
+  app.get("/sw.js", (_req, res) => res.set("Cache-Control", "no-cache").sendFile(path.join(publicDir, "sw.js")));
   app.use(express.static(publicDir, { index: false, maxAge: "1h" }));
 
   app.get("/p/:id", async (req, res, next) => {
