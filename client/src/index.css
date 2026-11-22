@@ -116,3 +116,55 @@
   .unroll, .pop { animation: none; }
   .btn { transition: none; }
 }
+
+/* ── Entrada del logo al cargar la web ── */
+.intro {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
+  background: var(--color-cream); transition: transform 0.56s cubic-bezier(0.7, 0, 0.8, 0.2);
+}
+.intro-leave { transform: translateY(calc(-100% - 3.5rem)); }
+.intro-wave { position: absolute; left: 0; top: 100%; width: 100%; height: 3rem; margin-top: -1px; }
+.intro-logo { position: relative; width: min(82vw, 34rem); }
+.intro-logo img { user-select: none; -webkit-user-drag: none; }
+
+.intro-cat, .intro-letter, .intro-kana { opacity: 0; }
+.intro-cat { transform-origin: 15.6% 55%; }
+.intro-go .intro-cat { animation: intro-cat 0.6s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+.intro-go .intro-letter { animation: intro-letter 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+.intro-go .intro-kana { animation: intro-kana 0.5s ease-out 1s both; }
+
+/* Ojos: abiertos al aparecer, dos pestañeos y luego la sonrisa del logo */
+.intro-eye-open {
+  position: absolute; top: 50%; left: 50%; height: 105%; aspect-ratio: 1; border-radius: 50%;
+  background: var(--color-cream); transform: translate(-50%, -50%) scale(0);
+}
+.intro-eye-smile { opacity: 0; }
+.intro-go .intro-eye-open { animation: intro-blink 2.1s ease-in-out 0.15s both; }
+.intro-go .intro-eye-smile { animation: intro-smile 2.1s ease-out 0.15s both; }
+
+@keyframes intro-cat {
+  from { opacity: 0; transform: scale(0.35) rotate(-10deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes intro-letter {
+  from { opacity: 0; transform: translateY(70%) scale(0.6); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes intro-kana {
+  from { opacity: 1; clip-path: inset(0 50% 0 50%); }
+  to { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+@keyframes intro-blink {
+  0%, 12% { transform: translate(-50%, -50%) scale(0); }
+  22%, 44% { transform: translate(-50%, -50%) scale(1); }
+  48% { transform: translate(-50%, -50%) scale(1.05, 0.08); }
+  52%, 62% { transform: translate(-50%, -50%) scale(1); }
+  66% { transform: translate(-50%, -50%) scale(1.05, 0.08); }
+  70%, 80% { transform: translate(-50%, -50%) scale(1); }
+  86%, 100% { transform: translate(-50%, -50%) scale(1.1, 0); }
+}
+@keyframes intro-smile {
+  0%, 84% { opacity: 0; transform: scale(0.7); }
+  92% { opacity: 1; transform: scale(1.18); }
+  100% { opacity: 1; transform: none; }
+}

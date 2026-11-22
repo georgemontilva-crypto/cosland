@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Route, Switch, useLocation } from "wouter";
 import Layout from "./components/Layout";
+import Intro from "./components/Intro";
 import Home from "./pages/Home";
 import Explore from "./pages/Explore";
 import ListingPage from "./pages/ListingPage";
@@ -27,6 +28,7 @@ function ScrollTop() {
 export default function App() {
   return (
     <Layout>
+      <Intro />
       <ScrollTop />
       <Switch>
         <Route path="/" component={Home} />
