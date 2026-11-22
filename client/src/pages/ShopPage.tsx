@@ -8,6 +8,7 @@ import { Awning, Avatar, Empty, Field, Loading, Stars, useToast } from "@/compon
 import { ListingGrid } from "@/components/cards";
 import ContactModal from "@/components/ContactModal";
 import FollowersModal from "@/components/FollowersModal";
+import { SupporterBadge } from "@/components/Support";
 import { share } from "./ListingPage";
 
 function Reviews({ shopId, shopName }: { shopId: number; shopName: string }) {
@@ -95,6 +96,7 @@ export default function ShopPage({ handle }: { handle: string }) {
             </h1>
             <p className="text-cocoa mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
               <span>{shopKindLabel(s.kind)}</span>
+              {s.supporter && <SupporterBadge />}
               {s.city && <span className="inline-flex items-center gap-1"><MapPin size={15} />{s.city}{s.country ? `, ${s.country}` : ""}</span>}
               {s.reviewCount > 0 && <span className="inline-flex items-center gap-1.5"><Stars value={s.rating} size={14} />{s.rating.toFixed(1)} ({s.reviewCount})</span>}
               <button className="font-bold text-ink underline underline-offset-4" onClick={() => setFollowers(true)}>{s.followers} {s.followers === 1 ? "seguidor" : "seguidores"}</button>

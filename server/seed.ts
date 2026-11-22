@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { inArray, like } from "drizzle-orm";
 import { db, pool, runMigrations } from "./db";
-import { users, shops, listings, wanted, reviews, conversations, messages, follows, favorites } from "./schema";
+import { users, shops, listings, wanted, reviews, conversations, messages, follows, favorites, contributions } from "./schema";
 
 const DOMAIN = "@muestra.cosland";
 
@@ -20,6 +20,7 @@ async function clear() {
     await db.delete(listings).where(inArray(listings.shopId, demoShops));
     await db.delete(reviews).where(inArray(reviews.shopId, demoShops));
     await db.delete(follows).where(inArray(follows.shopId, demoShops));
+    await db.delete(contributions).where(inArray(contributions.shopId, demoShops));
     const convs = (await db.select({ id: conversations.id }).from(conversations).where(inArray(conversations.shopId, demoShops))).map((c) => c.id);
     if (convs.length) { await db.delete(messages).where(inArray(messages.conversationId, convs)); await db.delete(conversations).where(inArray(conversations.id, convs)); }
     await db.delete(shops).where(inArray(shops.id, demoShops));

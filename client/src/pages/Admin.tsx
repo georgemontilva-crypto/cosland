@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { formatPrice, shopKindLabel } from "@shared/catalog";
 import { trpc, timeAgo } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
 import { Empty, Loading, useToast } from "@/components/ui";
 
-type Tab = "resumen" | "publicaciones" | "vitrinas" | "usuarios" | "denuncias";
+type Tab = "resumen" | "publicaciones" | "vitrinas" | "usuarios" | "denuncias" | "aportes";
 
 export default function Admin() {
   const { me, loading } = useMe();
@@ -19,7 +19,13 @@ export default function Admin() {
   const shops = trpc.admin.shops.useQuery(undefined, { enabled: isAdmin && tab === "vitrinas" });
   const users = trpc.admin.users.useQuery(undefined, { enabled: isAdmin && tab === "usuarios" });
   const reports = trpc.admin.reports.useQuery(undefined, { enabled: isAdmin && tab === "denuncias" });
-  const done = () => { utils.admin.invalidate(); toast("Listo"); };
+  const cfg = trpc.admin.supportSettings.useQuery(undefined, { enabled: isAdmin && tab === "aportes" });
+  const contribs = trpc.admin.contributions.useQuery(undefined, { enabled: isAdmin && tab === "aportes" });
+  const [form, setForm] = useState({ enabled: false, account: "", goal: "" });
+  useEffect(() => { if (cfg.data) setForm({ enabled: cfg.data.enabled, account: cfg.data.account, goal: cfg.data.goalCents ? String(cfg.data.goalCents / 100) : "" }); }, [cfg.data]);
+  const done = () => { utils.admin.invalidate(); utils.support.invalidate(); toast("Listo"); };
+  const saveCfg = trpc.admin.saveSupportSettings.useMutation({ onSuccess: done, onError: (e) => toast(e.message, true) });
+  const setContribution = trpc.admin.setContribution.useMutation({ onSuccess: done });
   const setListing = trpc.admin.setListing.useMutation({ onSuccess: done });
   const setVerified = trpc.admin.setVerified.useMutation({ onSuccess: done });
   const setBanned = trpc.admin.setBanned.useMutation({ onSuccess: done, onError: (e) => toast(e.message, true) });
@@ -28,7 +34,7 @@ export default function Admin() {
   if (loading) return <Loading />;
   if (!isAdmin) return <div className="wrap py-14"><Empty title="Solo para administradores" action={<Link href="/" className="btn btn-ink">Volver al inicio</Link>} /></div>;
   const o = overview.data;
-  const tabs: [Tab, string][] = [["resumen", "Resumen"], ["publicaciones", "Publicaciones"], ["vitrinas", "Vitrinas"], ["usuarios", "Usuarios"], ["denuncias", `Denuncias${o?.openReports ? ` (${o.openReports})` : ""}`]];
+  const tabs: [Tab, string][] = [["resumen", "Resumen"], ["publicaciones", "Publicaciones"], ["vitrinas", "Vitrinas"], ["usuarios", "Usuarios"], ["denuncias", `Denuncias${o?.openReports ? ` (${o.openReports})` : ""}`], ["aportes", `Aportes${o?.contributionsToVerify ? ` (${o.contributionsToVerify})` : ""}`]];
 
   return (
     <div className="wrap pt-6 md:pt-10">
@@ -121,6 +127,55 @@ export default function Admin() {
           ))}
         </ul>
       ))}
+
+      {tab === "aportes" && (
+        <div className="grid gap-8 lg:grid-cols-[22rem_1fr] items-start">
+          <form className="panel p-5 grid gap-4" onSubmit={(e) => { e.preventDefault(); saveCfg.mutate({ enabled: form.enabled, account: form.account, goal: form.goal ? Number(form.goal) : 0 }); }}>
+            <h2 className="text-xl">Ajustes de aportes</h2>
+            <label className="flex items-center gap-3 font-bold">
+              <input type="checkbox" className="w-5 h-5 accent-[#2a211c]" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
+              Pedir $1 por venta a los vendedores
+            </label>
+            <label className="block">
+              <span className="field-label">Datos de la cuenta para recibir aportes</span>
+              <textarea className="input" rows={5} maxLength={1000} value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })} placeholder={"Pago Móvil: banco, teléfono, cédula\nBinance: correo o ID"} />
+              <span className="field-hint block">Lo ven los vendedores con sesión iniciada al marcar una venta.</span>
+            </label>
+            <label className="block">
+              <span className="field-label">Meta del mes en dólares</span>
+              <input className="input" inputMode="decimal" value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value.replace(/[^\d.]/g, "") })} placeholder="25" />
+              <span className="field-hint block">Lo que cuesta mantener Cosland. Con una meta se muestra el medidor en el Inicio.</span>
+            </label>
+            <button className="btn btn-ink" disabled={saveCfg.isPending}>Guardar ajustes</button>
+          </form>
+
+          <div>
+            <h2 className="text-xl mb-3">Aportes de los vendedores</h2>
+            {contribs.isLoading ? <Loading /> : !contribs.data?.length ? <Empty title="Aún no hay aportes">Aparecen aquí cuando un vendedor marca vendida una publicación que lleva el dólar para Cosland.</Empty> : (
+              <ul className="grid gap-2.5">
+                {contribs.data.map((c) => (
+                  <li key={c.id} className={`soft p-4 flex flex-wrap items-center gap-3 ${c.status === "confirmed" ? "opacity-70" : ""}`}>
+                    <div className="min-w-0 flex-1 basis-56">
+                      <p className="font-extrabold">{formatPrice(c.amountCents)} de {c.shopName ?? "una vitrina eliminada"}</p>
+                      <p className="text-sm text-cocoa">
+                        {c.listingTitle ? `Por “${c.listingTitle}”. ` : ""}
+                        {c.status === "pending" ? "Aún no lo envía." : c.status === "reported" ? `Dice que lo envió ${timeAgo(c.reportedAt ?? c.createdAt)}.` : `Confirmado ${timeAgo(c.confirmedAt ?? c.createdAt)}.`}
+                        {c.reference ? ` Referencia: ${c.reference}.` : ""}
+                      </p>
+                      {c.proofUrl && <a href={c.proofUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-bold underline">Ver comprobante</a>}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {c.status !== "confirmed" && <button className="btn btn-sm btn-matcha" onClick={() => setContribution.mutate({ id: c.id, status: "confirmed" })}>Confirmar recibido</button>}
+                      {c.status === "reported" && <button className="btn btn-sm" onClick={() => setContribution.mutate({ id: c.id, status: "dismissed" })}>No llegó</button>}
+                      {c.status === "confirmed" && <button className="btn btn-sm" onClick={() => setContribution.mutate({ id: c.id, status: "reported" })}>Deshacer</button>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

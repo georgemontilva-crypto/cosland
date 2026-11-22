@@ -64,6 +64,8 @@ export const listings = mysqlTable("listings", {
   characterName: varchar("character_name", { length: 100 }),
   delivery: mysqlEnum("delivery", DELIVERY_IDS).notNull().default("ambos"),
   images: stringList("images").notNull(),
+  // El vendedor sumó 1 dólar al precio para aportarlo a Cosland cuando venda
+  supportsApp: boolean("supports_app").notNull().default(false),
   status: mysqlEnum("status", ["active", "paused", "sold", "removed"]).notNull().default("active"),
   featured: boolean("featured").notNull().default(false),
   views: int("views").notNull().default(0),
@@ -139,4 +141,25 @@ export const reports = mysqlTable("reports", {
   detail: text("detail"),
   status: mysqlEnum("status", ["open", "resolved"]).notNull().default("open"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Aportes voluntarios de los vendedores para mantener Cosland (1 dólar por venta)
+export const contributions = mysqlTable("contributions", {
+  id: int("id").autoincrement().primaryKey(),
+  shopId: int("shop_id").notNull(),
+  listingId: int("listing_id"),
+  amountCents: int("amount_cents").notNull().default(100),
+  // pending: vendió y aún no envía · reported: dice que ya envió · confirmed: el admin lo verificó
+  status: mysqlEnum("status", ["pending", "reported", "confirmed", "dismissed"]).notNull().default("pending"),
+  reference: varchar("reference", { length: 120 }),
+  proofUrl: varchar("proof_url", { length: 500 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  reportedAt: timestamp("reported_at"),
+  confirmedAt: timestamp("confirmed_at"),
+}, (t) => [index("contrib_shop_idx").on(t.shopId, t.status), index("contrib_status_idx").on(t.status, t.confirmedAt)]);
+
+// Ajustes que el administrador cambia desde el panel (por ejemplo, la cuenta para los aportes)
+export const settings = mysqlTable("settings", {
+  key: varchar("setting_key", { length: 60 }).primaryKey(),
+  value: text("value").notNull(),
 });

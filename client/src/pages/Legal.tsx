@@ -28,6 +28,7 @@ export function Privacy() {
           <li>De tu cuenta: nombre, correo y contraseña (guardada cifrada, nunca en texto legible).</li>
           <li>De tu vitrina: nombre, descripción, ciudad, país, fotos y los contactos que decidas mostrar (WhatsApp, Instagram, TikTok, dirección de tu tienda).</li>
           <li>De tu actividad: publicaciones, fotos, mensajes del chat, favoritos, vitrinas que sigues, reseñas, pedidos y denuncias.</li>
+          <li>De tus aportes a Cosland, si los haces: el monto, la referencia y el comprobante que subas.</li>
           <li>Técnicos: una cookie de sesión para mantenerte dentro de tu cuenta.</li>
         </ul>
       </section>

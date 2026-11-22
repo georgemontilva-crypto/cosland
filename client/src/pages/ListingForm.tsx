@@ -5,13 +5,15 @@ import { trpc } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
 import { Empty, Field, Loading, useToast } from "@/components/ui";
 import { PhotosInput } from "@/components/ImageUploader";
+import { useSupport } from "@/components/Support";
+import { formatPrice } from "@shared/catalog";
 
 const WEARABLE = ["cosplay", "pelucas", "accesorios", "merch"];
 const FANDOM = ["cosplay", "pelucas", "props", "accesorios", "figuras", "manga", "cartas", "merch", "arte", "videojuegos"];
 
 const blank = {
   category: "cosplay", deal: "venta", title: "", description: "", price: "", acceptsTrade: false, condition: "usado",
-  size: "", measurements: "", series: "", characterName: "", delivery: "ambos", images: [] as string[],
+  size: "", measurements: "", series: "", characterName: "", delivery: "ambos", images: [] as string[], supportsApp: true,
 };
 
 export default function ListingForm({ id }: { id?: number }) {
@@ -22,11 +24,14 @@ export default function ListingForm({ id }: { id?: number }) {
   const existing = trpc.listing.byId.useQuery({ id: id! }, { enabled: Boolean(id) });
   const [f, setF] = useState(blank);
   const [error, setError] = useState("");
+  const support = useSupport();
 
   useEffect(() => {
     const l = existing.data;
     if (l) setF({
-      category: l.category, deal: l.deal, title: l.title, description: l.description, price: l.priceCents != null ? String(l.priceCents / 100) : "",
+      category: l.category, deal: l.deal, title: l.title, description: l.description,
+      // El precio guardado ya incluye el dólar para Cosland; aquí se muestra el del vendedor
+      price: l.priceCents != null ? String((l.priceCents - (l.supportsApp ? 100 : 0)) / 100) : "", supportsApp: l.supportsApp,
       acceptsTrade: l.acceptsTrade, condition: l.condition ?? "usado", size: l.size ?? "", measurements: l.measurements ?? "",
       series: l.series ?? "", characterName: l.characterName ?? "", delivery: l.delivery, images: l.images,
     });
@@ -55,6 +60,7 @@ export default function ListingForm({ id }: { id?: number }) {
       size: WEARABLE.includes(f.category) ? f.size : "", measurements: WEARABLE.includes(f.category) ? f.measurements : "",
       series: FANDOM.includes(f.category) ? f.series : "", characterName: FANDOM.includes(f.category) ? f.characterName : "",
       delivery: f.delivery as any, images: f.images,
+      supportsApp: Boolean(support?.enabled) && f.supportsApp,
     });
   };
 
@@ -117,6 +123,22 @@ export default function ListingForm({ id }: { id?: number }) {
             <input type="checkbox" className="w-5 h-5 accent-[#2a211c]" checked={f.acceptsTrade} onChange={(e) => setF((p) => ({ ...p, acceptsTrade: e.target.checked }))} />
             Acepto cambiarlo por otro artículo
           </label>
+        )}
+
+        {support?.enabled && (
+          <div className="rounded-[1.5rem] border-[1.5px] border-ink bg-matcha/50 p-4">
+            <label className="flex items-start gap-3 font-bold">
+              <input type="checkbox" className="w-5 h-5 mt-0.5 accent-[#2a211c]" checked={f.supportsApp} onChange={(e) => setF((p) => ({ ...p, supportsApp: e.target.checked }))} />
+              <span>Sumar {formatPrice(support.amountCents)} al precio para mantener viva Cosland</span>
+            </label>
+            <p className="text-sm mt-2 ml-8">
+              {f.supportsApp
+                ? f.price && !Number.isNaN(Number(f.price))
+                  ? <>Tu publicación saldrá en <strong>{formatPrice(Math.round(Number(f.price) * 100) + support.amountCents)}</strong>. Cuando vendas, envías ese dólar a Cosland. Es voluntario.</>
+                  : <>Cuando vendas, envías {formatPrice(support.amountCents)} a Cosland. Es voluntario.</>
+                : "Publicar sigue siendo gratis. Puedes activarlo cuando quieras."}
+            </p>
+          </div>
         )}
 
         {error && <p role="alert" className="rounded-2xl bg-sakura/60 px-4 py-2.5 font-bold text-sm">{error}</p>}

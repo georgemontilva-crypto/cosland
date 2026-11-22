@@ -5,6 +5,7 @@ import { CATEGORIES, accentOf, categoryOf, formatPrice } from "@shared/catalog";
 import { trpc, timeAgo } from "@/lib/trpc";
 import { Awning, Loading } from "@/components/ui";
 import { CategoryBubble, ListingGrid, ShopCard } from "@/components/cards";
+import { SupportMeter } from "@/components/Support";
 
 const STREET = [
   { kind: "cosplayer", title: "Cosplayers", text: "Cosplays, pelucas y props", accent: "sakura", Icon: Shirt },
@@ -137,6 +138,8 @@ export default function Home() {
           )}
         </>
       )}
+
+      <section className="wrap mt-16 empty:hidden"><SupportMeter className="max-w-3xl" /></section>
 
       <section className="wrap mt-16">
         <div className="panel overflow-hidden">

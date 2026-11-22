@@ -7,7 +7,7 @@ import { db } from "./db";
 import { publish } from "./realtime";
 import { deleteImages } from "./storage";
 import {
-  users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports,
+  users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports, contributions, settings,
 } from "./schema";
 import {
   router, publicProcedure, authedProcedure, adminProcedure, signSession, wantsToken, COOKIE,
@@ -43,7 +43,23 @@ const shopStats = {
   followers: n(sql`(select count(*) from follows f where f.shop_id = shops.id)`),
   rating: n(sql`(select coalesce(avg(r.rating), 0) from reviews r where r.shop_id = shops.id)`),
   reviewCount: n(sql`(select count(*) from reviews r where r.shop_id = shops.id)`),
+  supporter: n(sql`(select count(*) from contributions c where c.shop_id = shops.id and c.status = 'confirmed')`),
 };
+
+/* ───────── Aportes: 1 dólar voluntario por venta ───────── */
+export const SUPPORT_CENTS = 100;
+async function getSettings() {
+  const rows = await db.select().from(settings);
+  const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  return {
+    enabled: map.support_enabled === "1",
+    account: map.support_account ?? "",
+    goalCents: Number(map.support_goal_cents ?? 0) || 0,
+  };
+}
+async function setSetting(key: string, value: string) {
+  await db.insert(settings).values({ key, value }).onDuplicateKeyUpdate({ set: { value } });
+}
 
 /* ───────── Cuenta ───────── */
 const authRouter = router({
@@ -123,6 +139,11 @@ const authRouter = router({
       }
       await db.delete(reviews).where(eq(reviews.shopId, shop.id));
       await db.delete(follows).where(eq(follows.shopId, shop.id));
+      // Los aportes ya confirmados quedan solo como monto y fecha, sin comprobante ni referencia
+      const proofs = await db.select({ url: contributions.proofUrl }).from(contributions).where(eq(contributions.shopId, shop.id));
+      proofs.forEach((c) => photos.push(c.url));
+      await db.delete(contributions).where(and(eq(contributions.shopId, shop.id), ne(contributions.status, "confirmed")));
+      await db.update(contributions).set({ proofUrl: null, reference: null }).where(eq(contributions.shopId, shop.id));
     }
     const convs = await db.select({ id: conversations.id }).from(conversations)
       .where(or(eq(conversations.buyerId, u.id), shop ? eq(conversations.shopId, shop.id) : undefined));
@@ -189,7 +210,7 @@ const shopRouter = router({
       isFollowing = Boolean(f);
     }
     const { userId, ...shop } = s.shop;
-    return { ...shop, listingCount: s.listingCount, followers: s.followers, rating: s.rating, reviewCount: s.reviewCount, isFollowing, isMine: ctx.user?.id === userId };
+    return { ...shop, listingCount: s.listingCount, followers: s.followers, rating: s.rating, reviewCount: s.reviewCount, supporter: s.supporter > 0, isFollowing, isMine: ctx.user?.id === userId };
   }),
 
   list: publicProcedure
@@ -269,6 +290,8 @@ const listingInput = z.object({
   characterName: optText(100),
   delivery: z.enum(DELIVERY_IDS),
   images: z.array(imageUrl).max(8, "Máximo 8 fotos"),
+  // true: se suma 1 dólar al precio para aportarlo a Cosland. Si no viene, no se toca (la app nativa aún no lo usa).
+  supportsApp: z.boolean().optional(),
 });
 
 const PAGE = 24;
@@ -366,11 +389,14 @@ const listingRouter = router({
   save: authedProcedure.input(listingInput).mutation(async ({ ctx, input }) => {
     const shop = await shopOf(ctx.user.id);
     if (!shop) throw fail("PRECONDITION_FAILED", "Crea tu vitrina antes de publicar.");
-    const { id, price, ...rest } = input;
+    const { id, price, supportsApp, ...rest } = input;
     const kind = categoryOf(input.category)?.kind ?? "product";
+    const base = toCents(price);
     const data = {
-      ...rest, kind, priceCents: toCents(price),
+      ...rest, kind,
+      priceCents: supportsApp && base != null ? base + SUPPORT_CENTS : base,
       condition: kind === "service" ? null : rest.condition ?? null,
+      ...(supportsApp === undefined ? {} : { supportsApp }),
     } as const;
     if (id) {
       const [own] = await db.select({ id: listings.id }).from(listings).where(and(eq(listings.id, id), eq(listings.shopId, shop.id))).limit(1);
@@ -387,8 +413,24 @@ const listingRouter = router({
     .mutation(async ({ ctx, input }) => {
       const shop = await shopOf(ctx.user.id);
       if (!shop) throw fail("NOT_FOUND", "No tienes vitrina.");
-      await db.update(listings).set({ status: input.status }).where(and(eq(listings.id, input.id), eq(listings.shopId, shop.id)));
-      return { ok: true };
+      const [l] = await db.select({ id: listings.id, supportsApp: listings.supportsApp }).from(listings)
+        .where(and(eq(listings.id, input.id), eq(listings.shopId, shop.id))).limit(1);
+      if (!l) throw fail("NOT_FOUND", "No encontramos esa publicación en tu vitrina.");
+      await db.update(listings).set({ status: input.status }).where(eq(listings.id, l.id));
+
+      // Al vender algo que llevaba el dólar para Cosland, queda un aporte pendiente
+      let contributionId: number | null = null;
+      const [open] = await db.select({ id: contributions.id, status: contributions.status }).from(contributions)
+        .where(eq(contributions.listingId, l.id)).limit(1);
+      if (input.status === "sold" && l.supportsApp && (await getSettings()).enabled) {
+        if (!open) {
+          const [r] = await db.insert(contributions).values({ shopId: shop.id, listingId: l.id, amountCents: SUPPORT_CENTS });
+          contributionId = r.insertId;
+        } else if (open.status === "pending") contributionId = open.id;
+      } else if (input.status !== "sold" && open?.status === "pending") {
+        await db.delete(contributions).where(eq(contributions.id, open.id)); // se arrepintió de marcarla vendida
+      }
+      return { ok: true, contributionId };
     }),
 
   toggleFavorite: authedProcedure.input(z.object({ listingId: z.number().int() })).mutation(async ({ ctx, input }) => {
@@ -582,6 +624,55 @@ const wantedRouter = router({
   }),
 });
 
+/* ───────── Aportes a Cosland ───────── */
+const supportRouter = router({
+  // Lo que ve todo el mundo: si está activo, la meta del mes y cuánto va. La cuenta solo se muestra con sesión.
+  info: publicProcedure.query(async ({ ctx }) => {
+    const cfg = await getSettings();
+    const [m] = await db.select({
+      total: n(sql`coalesce(sum(${contributions.amountCents}), 0)`),
+      shops: n(sql`count(distinct ${contributions.shopId})`),
+    }).from(contributions).where(and(eq(contributions.status, "confirmed"), sql`${contributions.confirmedAt} >= date_format(utc_timestamp(), '%Y-%m-01')`));
+    return {
+      enabled: cfg.enabled, amountCents: SUPPORT_CENTS, goalCents: cfg.goalCents,
+      monthCents: m?.total ?? 0, supporters: m?.shops ?? 0,
+      account: ctx.user ? cfg.account : null,
+    };
+  }),
+
+  mine: authedProcedure.query(async ({ ctx }) => {
+    const shop = await shopOf(ctx.user.id);
+    if (!shop) return [];
+    return db.select({
+      id: contributions.id, status: contributions.status, amountCents: contributions.amountCents, createdAt: contributions.createdAt,
+      listingId: contributions.listingId, listingTitle: listings.title,
+    }).from(contributions).leftJoin(listings, eq(listings.id, contributions.listingId))
+      .where(and(eq(contributions.shopId, shop.id), ne(contributions.status, "dismissed"))).orderBy(desc(contributions.id)).limit(100);
+  }),
+
+  // El vendedor avisa que ya envió el dólar (con referencia o comprobante, si quiere)
+  report: authedProcedure
+    .input(z.object({ id: z.number().int(), reference: optText(120), proofUrl: imageUrl.optional().nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const shop = await shopOf(ctx.user.id);
+      const [c] = shop ? await db.select().from(contributions).where(and(eq(contributions.id, input.id), eq(contributions.shopId, shop.id))).limit(1) : [];
+      if (!c || c.status === "confirmed") throw fail("NOT_FOUND", "No encontramos ese aporte pendiente.");
+      await db.update(contributions).set({ status: "reported", reference: input.reference, proofUrl: input.proofUrl ?? null, reportedAt: new Date() })
+        .where(eq(contributions.id, c.id));
+      return { ok: true };
+    }),
+
+  // Es voluntario: el vendedor puede decir que esta vez no
+  skip: authedProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const shop = await shopOf(ctx.user.id);
+    if (shop) {
+      await db.update(contributions).set({ status: "dismissed" })
+        .where(and(eq(contributions.id, input.id), eq(contributions.shopId, shop.id), eq(contributions.status, "pending")));
+    }
+    return { ok: true };
+  }),
+});
+
 /* ───────── Denuncias y administración ───────── */
 const reportRouter = router({
   create: authedProcedure
@@ -601,7 +692,8 @@ const adminRouter = router({
       c(sql`select count(*) c from reports where status = 'open'`),
       c(sql`select count(*) c from wanted where status = 'open'`),
     ]);
-    return { users: usersN, shops: shopsN, listings: listingsN, openReports, wanted: wantedN };
+    const toVerify = await c(sql`select count(*) c from contributions where status = 'reported'`);
+    return { users: usersN, shops: shopsN, listings: listingsN, openReports, wanted: wantedN, contributionsToVerify: toVerify };
   }),
 
   listings: adminProcedure.input(z.object({ q: z.string().max(80).optional() }).optional()).query(({ input }) =>
@@ -656,10 +748,41 @@ const adminRouter = router({
     await db.update(reports).set({ status: "resolved" }).where(eq(reports.id, input.id));
     return { ok: true };
   }),
+
+  /* Aportes: ajustes y verificación */
+  supportSettings: adminProcedure.query(() => getSettings()),
+
+  saveSupportSettings: adminProcedure
+    .input(z.object({ enabled: z.boolean(), account: z.string().trim().max(1000), goal: z.number().min(0).max(1_000_000) }))
+    .mutation(async ({ input }) => {
+      if (input.enabled && !input.account) throw fail("BAD_REQUEST", "Escribe los datos de la cuenta antes de activar los aportes.");
+      await setSetting("support_enabled", input.enabled ? "1" : "0");
+      await setSetting("support_account", input.account);
+      await setSetting("support_goal_cents", String(Math.round(input.goal * 100)));
+      return { ok: true };
+    }),
+
+  contributions: adminProcedure.query(() =>
+    db.select({
+      id: contributions.id, status: contributions.status, amountCents: contributions.amountCents, reference: contributions.reference,
+      proofUrl: contributions.proofUrl, createdAt: contributions.createdAt, reportedAt: contributions.reportedAt, confirmedAt: contributions.confirmedAt,
+      shopName: shops.name, shopHandle: shops.handle, listingTitle: listings.title,
+    }).from(contributions)
+      .leftJoin(shops, eq(shops.id, contributions.shopId)).leftJoin(listings, eq(listings.id, contributions.listingId))
+      .where(ne(contributions.status, "dismissed"))
+      .orderBy(sql`field(${contributions.status}, 'reported', 'pending', 'confirmed')`, desc(contributions.id)).limit(300)),
+
+  setContribution: adminProcedure
+    .input(z.object({ id: z.number().int(), status: z.enum(["confirmed", "dismissed", "reported"]) }))
+    .mutation(async ({ input }) => {
+      await db.update(contributions).set({ status: input.status, confirmedAt: input.status === "confirmed" ? new Date() : null })
+        .where(eq(contributions.id, input.id));
+      return { ok: true };
+    }),
 });
 
 export const appRouter = router({
   auth: authRouter, shop: shopRouter, listing: listingRouter, chat: chatRouter,
-  review: reviewRouter, wanted: wantedRouter, report: reportRouter, admin: adminRouter,
+  review: reviewRouter, wanted: wantedRouter, report: reportRouter, support: supportRouter, admin: adminRouter,
 });
 export type AppRouter = typeof appRouter;

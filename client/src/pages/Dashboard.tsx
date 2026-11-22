@@ -7,6 +7,7 @@ import { Awning, Avatar, Empty, Loading, useToast } from "@/components/ui";
 import { Photo } from "@/components/cards";
 import ShopForm from "./ShopForm";
 import FollowersModal from "@/components/FollowersModal";
+import { SupportMeter, SupportModal, useSupport } from "@/components/Support";
 import { useState } from "react";
 
 const STATUS: Record<string, { label: string; bg: string }> = {
@@ -18,7 +19,15 @@ export default function Dashboard() {
   const toast = useToast();
   const utils = trpc.useUtils();
   const mine = trpc.listing.mine.useQuery(undefined, { enabled: Boolean(me?.shop) });
-  const setStatus = trpc.listing.setStatus.useMutation({ onSuccess: () => { utils.listing.invalidate(); toast("Publicación actualizada"); } });
+  const support = useSupport();
+  const dues = trpc.support.mine.useQuery(undefined, { enabled: Boolean(me?.shop) && Boolean(support?.enabled) });
+  const [owed, setOwed] = useState<null | { id: number; title?: string | null }>(null);
+  const setStatus = trpc.listing.setStatus.useMutation({
+    onSuccess: (r, v) => {
+      utils.listing.invalidate(); utils.support.invalidate(); toast("Publicación actualizada");
+      if (r.contributionId) setOwed({ id: r.contributionId, title: mine.data?.find((l) => l.id === v.id)?.title });
+    },
+  });
 
   const [followers, setFollowers] = useState(false);
   if (loading) return <Loading />;
@@ -59,6 +68,27 @@ export default function Dashboard() {
         </dl>
       </div>
 
+      {support?.enabled && (
+        <section className="mt-8 grid gap-4 lg:grid-cols-2 items-start" aria-label="Aportes a Cosland">
+          <SupportMeter />
+          {(dues.data?.length ?? 0) > 0 && (
+            <div className="soft p-5">
+              <h2 className="text-xl">Tus aportes</h2>
+              <ul className="grid gap-2.5 mt-3">
+                {dues.data!.slice(0, 6).map((c) => (
+                  <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <span className="min-w-0 flex-1 basis-40 truncate font-bold">{c.listingTitle ?? "Aporte"}</span>
+                    {c.status === "pending" && <button className="btn btn-sm btn-matcha" onClick={() => setOwed({ id: c.id, title: c.listingTitle })}>Enviar {formatPrice(c.amountCents)}</button>}
+                    {c.status === "reported" && <span className="tag" style={{ background: "#f8e29c" }}>Por confirmar</span>}
+                    {c.status === "confirmed" && <span className="tag" style={{ background: "#cde4be" }}>Recibido, gracias</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+
       <h2 className="text-2xl mt-10 mb-4">Mis publicaciones</h2>
       {mine.isLoading ? <Loading /> : !items.length ? (
         <Empty title="Tu vitrina está lista para su primer artículo" action={<Link href="/publicar" className="btn btn-sakura">Publicar ahora</Link>}>
@@ -89,6 +119,7 @@ export default function Dashboard() {
         </ul>
       )}
       {followers && <FollowersModal shopId={shop.id} mine onClose={() => setFollowers(false)} />}
+      {owed && <SupportModal id={owed.id} title={owed.title} onClose={() => setOwed(null)} />}
     </div>
   );
 }

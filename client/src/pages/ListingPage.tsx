@@ -7,6 +7,7 @@ import { useFavorites, useMe } from "@/lib/hooks";
 import { Awning, Avatar, Empty, Field, Loading, Modal, Stars, useToast } from "@/components/ui";
 import { ListingGrid, Photo } from "@/components/cards";
 import ContactModal from "@/components/ContactModal";
+import { SupportModal } from "@/components/Support";
 
 export async function share(title: string, toast: (t: string) => void) {
   const url = location.href;
@@ -27,7 +28,10 @@ export default function ListingPage({ id }: { id: number }) {
   const [modal, setModal] = useState<null | "contact" | "report">(null);
   const [reason, setReason] = useState<string>(REPORT_REASONS[0]);
   const [detail, setDetail] = useState("");
-  const setStatus = trpc.listing.setStatus.useMutation({ onSuccess: () => { utils.listing.invalidate(); toast("Publicación actualizada"); } });
+  const [owed, setOwed] = useState<number | null>(null);
+  const setStatus = trpc.listing.setStatus.useMutation({
+    onSuccess: (r) => { utils.listing.invalidate(); utils.support.invalidate(); toast("Publicación actualizada"); if (r.contributionId) setOwed(r.contributionId); },
+  });
   const report = trpc.report.create.useMutation({ onSuccess: () => { setModal(null); toast("Denuncia enviada. La revisaremos."); }, onError: (e) => toast(e.message, true) });
 
   if (q.isLoading) return <Loading />;
@@ -78,6 +82,7 @@ export default function ListingPage({ id }: { id: number }) {
           </div>
           <h1 className="text-[1.75rem] md:text-4xl">{l.title}</h1>
           <p className="text-3xl md:text-4xl font-extrabold mt-3">{formatPrice(l.priceCents, l.deal)}</p>
+          {l.supportsApp && <p className="text-sm text-cocoa mt-1">Incluye $1 que el vendedor aporta para mantener Cosland.</p>}
           <p className="text-sm text-cocoa mt-2 flex items-center gap-3">
             <span>Publicado {timeAgo(l.createdAt)}</span>
             <span className="inline-flex items-center gap-1"><Eye size={14} />{l.views} {l.views === 1 ? "visita" : "visitas"}</span>
@@ -152,6 +157,7 @@ export default function ListingPage({ id }: { id: number }) {
         </section>
       )}
 
+      {owed && <SupportModal id={owed} title={l.title} onClose={() => setOwed(null)} />}
       {modal === "contact" && <ContactModal shopId={s.id} shopName={s.name} listingId={l.id} listingTitle={l.title} withOffer={l.kind === "product"} onClose={() => setModal(null)} />}
       {modal === "report" && (
         <Modal title="Denunciar publicación" onClose={() => setModal(null)}>
