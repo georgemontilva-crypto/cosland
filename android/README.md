@@ -1,6 +1,8 @@
-# Cosland para Android
+# Cosland para Android, versión web empaquetada (respaldo)
 
-App Android que abre la web de Cosland a pantalla completa (Trusted Web Activity). No hay que reescribir nada: lo que se publica en la web aparece en la app al instante.
+La app principal es la nativa, en `../mobile`. Esta carpeta queda como respaldo: una app Android que abre la web de Cosland a pantalla completa (Trusted Web Activity).
+
+Las dos usan el mismo paquete, así que a Play Store se sube una sola.
 
 - Paquete: `com.cosland.app`
 - Apunta a Android 16 (API 36), mínimo Android 5.0
@@ -8,7 +10,7 @@ App Android que abre la web de Cosland a pantalla completa (Trusted Web Activity
 
 ## Compilar en GitHub
 
-1. Repo → pestaña **Actions** → **App Android (APK y AAB)** → **Run workflow**.
+1. Repo → pestaña **Actions** → **App Android web, de respaldo (APK y AAB)** → **Run workflow**.
 2. Escribe la dirección de la web sin `https://` y pulsa **Run workflow**.
 3. Al terminar, abre la ejecución y descarga el archivo de **Artifacts**.
 

@@ -1,13 +1,14 @@
-name: App Android (APK y AAB)
+name: App Android nativa (APK y AAB)
 
-# Se lanza a mano: pestaña Actions → "App Android (APK y AAB)" → Run workflow.
+# La app nativa de Cosland (carpeta mobile/, React Native con Expo).
+# Se lanza a mano: pestaña Actions → "App Android nativa (APK y AAB)" → Run workflow.
 # Con los secretos de firma genera el APK y el AAB listos para Play Store.
-# Sin ellos genera un APK de prueba para instalar en tu teléfono.
+# Sin ellos genera un APK firmado con una llave de prueba, para instalar en tu teléfono.
 on:
   workflow_dispatch:
     inputs:
       host:
-        description: "Dirección de la web, sin https:// (ej. cosland.app)"
+        description: "Dirección de Cosland, sin https:// (ej. cosland.app)"
         required: true
         type: string
       version_name:
@@ -27,9 +28,11 @@ permissions:
 jobs:
   android:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 75
     env:
+      CI: "1"
       TWA_HOST: ${{ inputs.host }}
+      EXPO_PUBLIC_API_URL: https://${{ inputs.host }}
       APP_VERSION_NAME: ${{ inputs.version_name }}
       APP_VERSION_CODE: ${{ inputs.version_code }}
       HAS_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
@@ -37,11 +40,6 @@ jobs:
       ANDROID_KEY_ALIAS: cosland
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
 
       - name: Revisar datos
         run: |
@@ -51,10 +49,32 @@ jobs:
           if ! [[ "$APP_VERSION_CODE" =~ ^[0-9]+$ ]]; then
             echo "::error::El número de versión debe ser un entero (1, 2, 3...)"; exit 1
           fi
-          code=$(curl -s -o /dev/null -m 20 -w "%{http_code}" "https://$TWA_HOST/manifest.webmanifest" || true)
-          if [ "$code" != "200" ]; then
-            echo "::warning::https://$TWA_HOST/manifest.webmanifest respondió $code. Revisa que la dirección sea la de Cosland."
+          if ! [[ "$APP_VERSION_NAME" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "::error::La versión visible debe ser como 1.0.0"; exit 1
           fi
+          code=$(curl -s -o /dev/null -m 20 -w "%{http_code}" "https://$TWA_HOST/api/health" || true)
+          if [ "$code" != "200" ]; then
+            echo "::warning::https://$TWA_HOST/api/health respondió $code. Revisa que la dirección sea la de Cosland y que el servidor esté arriba."
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Instalar dependencias
+        working-directory: mobile
+        run: npm ci
+
+      - name: Generar el proyecto Android
+        working-directory: mobile
+        run: npx expo prebuild --platform android --no-install
 
       - name: Preparar la llave de firma
         if: env.HAS_KEY == 'true'
@@ -64,40 +84,32 @@ jobs:
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/cosland.keystore"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/cosland.keystore" >> "$GITHUB_ENV"
 
-      - name: Compilar APK y AAB firmados
+      - name: Compilar APK y AAB para Play Store
         if: env.HAS_KEY == 'true'
-        working-directory: android
-        run: |
-          chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease bundleRelease \
-            -PtwaHost="$TWA_HOST" -PappVersionName="$APP_VERSION_NAME" -PappVersionCode="$APP_VERSION_CODE"
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon assembleRelease bundleRelease
 
       - name: Compilar APK de prueba (sin llave de firma)
         if: env.HAS_KEY != 'true'
-        working-directory: android
-        run: |
-          chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug \
-            -PtwaHost="$TWA_HOST" -PappVersionName="$APP_VERSION_NAME" -PappVersionCode="$APP_VERSION_CODE"
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon assembleRelease
 
       - name: Resumen y huella de la llave
         run: |
           {
-            echo "## Cosland para Android"
-            echo "- Dirección: \`https://$TWA_HOST\`"
+            echo "## Cosland para Android (app nativa)"
+            echo "- Servidor: \`https://$TWA_HOST\`"
             echo "- Versión: $APP_VERSION_NAME ($APP_VERSION_CODE)"
             if [ "$HAS_KEY" = "true" ]; then
               fp=$(keytool -list -v -keystore "$ANDROID_KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" | grep "SHA256:" | head -1 | sed 's/.*SHA256: *//')
-              echo "- Firma: llave de subida de Cosland"
+              echo "- Firma: tu llave de subida. El archivo \`.aab\` es el que se sube a Play Store."
               echo ""
               echo "### Huella SHA-256 de tu llave"
               echo "\`$fp\`"
               echo ""
-              echo "Ponla en Railway en la variable \`ANDROID_SHA256\`. Cuando Play Console te dé la huella de su llave de firma, agrégala a la misma variable separada por una coma."
+              echo "Ponla en Railway en la variable \`ANDROID_SHA256\` para que los enlaces de Cosland abran en la app. Cuando Play Console te dé la huella de su llave de firma, agrégala a la misma variable separada por una coma."
             else
               echo "- Firma: de prueba. Este APK sirve para instalar en tu teléfono, no para Play Store."
-              echo ""
-              echo "Verás la barra de direcciones arriba: desaparece con la versión firmada y la variable \`ANDROID_SHA256\`."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -106,5 +118,5 @@ jobs:
           name: cosland-android-${{ inputs.version_name }}
           if-no-files-found: error
           path: |
-            android/app/build/outputs/apk/**/*.apk
-            android/app/build/outputs/bundle/**/*.aab
+            mobile/android/app/build/outputs/apk/release/*.apk
+            mobile/android/app/build/outputs/bundle/release/*.aab

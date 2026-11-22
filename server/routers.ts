@@ -9,7 +9,7 @@ import {
   users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports,
 } from "./schema";
 import {
-  router, publicProcedure, authedProcedure, adminProcedure, signSession, COOKIE,
+  router, publicProcedure, authedProcedure, adminProcedure, signSession, wantsToken, COOKIE,
 } from "./trpc";
 import {
   ACCENT_IDS, CATEGORY_IDS, CONDITION_IDS, DEAL_IDS, DELIVERY_IDS, SHOP_KIND_IDS, REPORT_REASONS, categoryOf,
@@ -77,8 +77,8 @@ const authRouter = router({
         name: input.name, email: input.email, passwordHash: await bcrypt.hash(input.password, 10),
         role: admin ? "admin" : "user",
       });
-      signSession(ctx.res, r.insertId);
-      return { ok: true };
+      const token = signSession(ctx.res, r.insertId);
+      return { ok: true, token: wantsToken(ctx.req) ? token : null };
     }),
 
   login: publicProcedure
@@ -89,8 +89,8 @@ const authRouter = router({
         throw fail("UNAUTHORIZED", "El correo o la contraseña no coinciden.");
       }
       if (u.banned) throw fail("FORBIDDEN", "Esta cuenta está suspendida.");
-      signSession(ctx.res, u.id);
-      return { ok: true };
+      const token = signSession(ctx.res, u.id);
+      return { ok: true, token: wantsToken(ctx.req) ? token : null };
     }),
 
   logout: publicProcedure.mutation(({ ctx }) => {
@@ -251,6 +251,7 @@ const listingRouter = router({
       shopId: z.number().int().optional(),
       sort: z.enum(["recientes", "precio_asc", "precio_desc"]).optional(),
       page: z.number().int().min(1).max(500).optional(),
+      cursor: z.number().int().min(1).max(500).nullish(), // la app pide las páginas de corrido con este campo
     }))
     .query(async ({ input }) => {
       const where: SQL[] = [eq(listings.status, "active")];
@@ -268,7 +269,7 @@ const listingRouter = router({
         const q = `%${input.q.trim()}%`;
         where.push(or(like(listings.title, q), like(listings.series, q), like(listings.characterName, q), like(listings.description, q), like(shops.name, q))!);
       }
-      const page = input.page ?? 1;
+      const page = input.cursor ?? input.page ?? 1;
       const order = input.sort === "precio_asc" ? [asc(listings.priceCents)]
         : input.sort === "precio_desc" ? [desc(listings.priceCents)]
         : [desc(listings.featured), desc(listings.id)];

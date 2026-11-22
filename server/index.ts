@@ -20,6 +20,23 @@ app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(cookieParser());
 
+// Orígenes extra con permiso para llamar a la API desde el navegador (la app nativa no lo necesita)
+const corsOrigins = (process.env.CORS_ORIGINS ?? "").split(",").map((o) => o.trim()).filter(Boolean);
+if (corsOrigins.length) {
+  app.use("/api", (req, res, next) => {
+    const origin = req.get("origin");
+    if (origin && corsOrigins.includes(origin)) {
+      res.set({
+        "Access-Control-Allow-Origin": origin, Vary: "Origin",
+        "Access-Control-Allow-Headers": "authorization, content-type, x-cosland-client, trpc-accept, accept, cache-control, x-requested-with, last-event-id",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      });
+      if (req.method === "OPTIONS") return res.status(204).end();
+    }
+    next();
+  });
+}
+
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 // Vínculo entre la web y la app Android (Digital Asset Links). Con las huellas correctas

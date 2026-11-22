@@ -1,0 +1,88 @@
+import { Platform } from "react-native";
+import * as SecureStore from "expo-secure-store";
+import { createTRPCReact } from "@trpc/react-query";
+import { httpBatchLink, httpLink, splitLink } from "@trpc/client";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "../../../server/routers";
+
+export const API = (process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+
+export const trpc = createTRPCReact<AppRouter>();
+export type Out = inferRouterOutputs<AppRouter>;
+export type Card = Out["listing"]["search"]["items"][number];
+export type ShopSummary = Out["shop"]["list"][number];
+
+/* ── Sesión: el token vive en el almacén cifrado del teléfono ── */
+const KEY = "cosland_token";
+let token: string | null = null;
+export const getToken = () => token;
+
+export async function loadToken() {
+  try {
+    token = Platform.OS === "web" ? globalThis.localStorage?.getItem(KEY) ?? null : await SecureStore.getItemAsync(KEY);
+  } catch { token = null; }
+  return token;
+}
+
+export async function saveToken(value: string | null) {
+  token = value;
+  try {
+    if (Platform.OS === "web") {
+      if (value) globalThis.localStorage?.setItem(KEY, value); else globalThis.localStorage?.removeItem(KEY);
+    } else if (value) await SecureStore.setItemAsync(KEY, value);
+    else await SecureStore.deleteItemAsync(KEY);
+  } catch { /* la sesión sigue en memoria */ }
+}
+
+export const authHeaders = (): Record<string, string> => ({
+  "x-cosland-client": "app",
+  ...(token ? { authorization: `Bearer ${token}` } : {}),
+});
+
+export const trpcClient = trpc.createClient({
+  links: [
+    splitLink({
+      // Entrar y registrarse van solos para que el límite de intentos del servidor los vea
+      condition: (op) => op.path.startsWith("auth."),
+      true: httpLink({ url: `${API}/api/trpc`, headers: authHeaders }),
+      false: httpBatchLink({ url: `${API}/api/trpc`, headers: authHeaders }),
+    }),
+  ],
+});
+
+/* ── Utilidades ── */
+// Las fotos subidas al servidor llegan como rutas relativas
+export const img = (url?: string | null) => (!url ? null : url.startsWith("http") ? url : `${API}${url}`);
+export const webUrl = (path: string) => `${API}${path}`;
+
+export function errText(e: { message: string }) {
+  try { const issues = JSON.parse(e.message); if (Array.isArray(issues) && issues[0]?.message) return String(issues[0].message); } catch { /* mensaje normal */ }
+  return /network|fetch/i.test(e.message) ? "No hay conexión con Cosland. Revisa tu internet." : e.message;
+}
+
+export async function uploadImage(uri: string, mime?: string | null): Promise<string> {
+  const fd = new FormData();
+  if (Platform.OS === "web") {
+    fd.append("file", await (await fetch(uri)).blob(), "foto.jpg");
+  } else {
+    fd.append("file", { uri, name: "foto.jpg", type: mime ?? "image/jpeg" } as unknown as Blob);
+  }
+  const res = await fetch(`${API}/api/upload`, { method: "POST", body: fd, headers: authHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? "No se pudo subir la foto.");
+  return data.url as string;
+}
+
+export function timeAgo(d: Date | string) {
+  const s = Math.max(1, Math.floor((Date.now() - new Date(d).getTime()) / 1000));
+  if (s < 60) return "hace un momento";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `hace ${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `hace ${h} h`;
+  const days = Math.floor(h / 24);
+  if (days < 30) return `hace ${days} ${days === 1 ? "día" : "días"}`;
+  return new Date(d).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" });
+}
+
+export const whatsappLink = (phone: string, text: string) => `https://wa.me/${phone.replace(/[^\d]/g, "")}?text=${encodeURIComponent(text)}`;

@@ -15,16 +15,22 @@ const secret = SECRET || "solo-desarrollo-cambia-esto";
 
 export type SessionUser = { id: number; email: string; name: string; role: "user" | "admin" };
 
+// La web guarda la sesión en una cookie que el navegador no deja leer a los scripts.
+// La app nativa no usa cookies: recibe el token y lo manda en la cabecera Authorization.
+export const wantsToken = (req: Request) => req.get("x-cosland-client") === "app";
+
 export function signSession(res: Response, userId: number) {
   const token = jwt.sign({ uid: userId }, secret, { expiresIn: "30d" });
   res.cookie(COOKIE, token, {
     httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production",
     maxAge: 30 * 24 * 3600 * 1000, path: "/",
   });
+  return token;
 }
 
 export async function userFromRequest(req: Request): Promise<SessionUser | null> {
-  const token = req.cookies?.[COOKIE];
+  const bearer = req.get("authorization")?.match(/^Bearer (.+)$/)?.[1];
+  const token = bearer ?? req.cookies?.[COOKIE];
   if (!token) return null;
   try {
     const { uid } = jwt.verify(token, secret) as { uid: number };
