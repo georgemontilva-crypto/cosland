@@ -1,0 +1,22 @@
+// Proyecto Android de Cosland: una Trusted Web Activity que abre la web a pantalla completa.
+// Basado en la plantilla de Bubblewrap (GoogleChromeLabs), licencia Apache 2.0.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.9.1'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

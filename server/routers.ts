@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { and, or, eq, ne, like, desc, asc, sql, inArray, gte, lte, type SQL } from "drizzle-orm";
 import { db } from "./db";
 import { publish } from "./realtime";
+import { deleteImages } from "./storage";
 import {
   users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports,
 } from "./schema";
@@ -93,6 +94,46 @@ const authRouter = router({
     }),
 
   logout: publicProcedure.mutation(({ ctx }) => {
+    ctx.res.clearCookie(COOKIE, { path: "/" });
+    return { ok: true };
+  }),
+
+  // Datos públicos del sitio para las páginas legales
+  site: publicProcedure.query(() => ({ contactEmail: process.env.CONTACT_EMAIL?.trim() || null })),
+
+  // Eliminar la cuenta y todo lo asociado: vitrina, publicaciones, fotos, mensajes, reseñas y pedidos
+  deleteAccount: authedProcedure.input(z.object({ password: z.string().min(1).max(100) })).mutation(async ({ ctx, input }) => {
+    const [u] = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
+    if (!u || !(await bcrypt.compare(input.password, u.passwordHash))) throw fail("UNAUTHORIZED", "La contraseña no coincide.");
+    const shop = await shopOf(u.id);
+    const photos: (string | null)[] = [];
+    if (shop) {
+      const mine = await db.select({ id: listings.id, images: listings.images }).from(listings).where(eq(listings.shopId, shop.id));
+      mine.forEach((l) => photos.push(...l.images));
+      photos.push(shop.avatarUrl, shop.bannerUrl);
+      const ids = mine.map((l) => l.id);
+      if (ids.length) {
+        await db.delete(favorites).where(inArray(favorites.listingId, ids));
+        await db.delete(reports).where(inArray(reports.listingId, ids));
+        await db.delete(listings).where(eq(listings.shopId, shop.id));
+      }
+      await db.delete(reviews).where(eq(reviews.shopId, shop.id));
+      await db.delete(follows).where(eq(follows.shopId, shop.id));
+    }
+    const convs = await db.select({ id: conversations.id }).from(conversations)
+      .where(or(eq(conversations.buyerId, u.id), shop ? eq(conversations.shopId, shop.id) : undefined));
+    if (convs.length) {
+      await db.delete(messages).where(inArray(messages.conversationId, convs.map((c) => c.id)));
+      await db.delete(conversations).where(inArray(conversations.id, convs.map((c) => c.id)));
+    }
+    await db.delete(favorites).where(eq(favorites.userId, u.id));
+    await db.delete(follows).where(eq(follows.userId, u.id));
+    await db.delete(reviews).where(eq(reviews.authorId, u.id));
+    await db.delete(wanted).where(eq(wanted.userId, u.id));
+    await db.delete(reports).where(eq(reports.reporterId, u.id));
+    if (shop) await db.delete(shops).where(eq(shops.id, shop.id));
+    await db.delete(users).where(eq(users.id, u.id));
+    await deleteImages(photos);
     ctx.res.clearCookie(COOKIE, { path: "/" });
     return { ok: true };
   }),

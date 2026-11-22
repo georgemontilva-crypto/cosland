@@ -41,6 +41,11 @@ export default function Auth({ mode }: { mode: "login" | "register" }) {
             </Field>
             {error && <p role="alert" className="rounded-2xl bg-sakura/60 px-4 py-2.5 font-bold text-sm">{error}</p>}
             <button className="btn btn-ink" disabled={busy}>{busy ? "Un momento…" : mode === "login" ? "Entrar" : "Crear cuenta"}</button>
+            {mode === "register" && (
+              <p className="text-sm text-cocoa text-center">
+                Al crear tu cuenta aceptas los <Link href="/terminos" className="underline font-bold">Términos de uso</Link> y la <Link href="/privacidad" className="underline font-bold">Política de privacidad</Link>.
+              </p>
+            )}
           </form>
           <p className="mt-5 text-center">
             {mode === "login"

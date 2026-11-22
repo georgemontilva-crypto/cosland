@@ -39,6 +39,10 @@ npm run seed         # carga vitrinas y publicaciones de muestra
 npm run seed -- clear  # borra todo lo de muestra
 ```
 
+## App Android
+
+El proyecto de la app para Play Store está en `android/` y se compila desde GitHub Actions. Los pasos están en `android/README.md`.
+
 ## Estructura
 
 ```
@@ -46,4 +50,5 @@ client/   interfaz (páginas en client/src/pages)
 server/   API tRPC, esquema, subida de imágenes
 shared/   catálogo de categorías, colores y textos compartidos
 drizzle/  migraciones SQL
+android/  app Android (abre la web a pantalla completa)
 ```

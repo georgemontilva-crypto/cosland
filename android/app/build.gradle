@@ -1,0 +1,105 @@
+plugins {
+    id 'com.android.application'
+}
+
+// La dirección de la web se pasa al compilar:  ./gradlew bundleRelease -PtwaHost=cosland.app
+def twaHost = (project.findProperty('twaHost') ?: '').toString().trim()
+if (!(twaHost ==~ /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/)) {
+    throw new GradleException("Falta la dirección de la web. Usa -PtwaHost=tu-dominio.com (sin https:// ni barras).")
+}
+
+def twaManifest = [
+    applicationId: 'com.cosland.app',
+    hostName: twaHost,                  // dominio que abre la app
+    launchUrl: '/',                     // ruta de inicio
+    name: 'Cosland',                    // nombre de la aplicación
+    launcherName: 'Cosland',            // nombre bajo el ícono
+    themeColor: '#FBF1DC',              // barra de estado
+    themeColorDark: '#FBF1DC',
+    navigationColor: '#FFFAEF',         // barra de navegación del sistema
+    navigationColorDark: '#FFFAEF',
+    navigationDividerColor: '#FFFAEF',
+    navigationDividerColorDark: '#FFFAEF',
+    backgroundColor: '#FBF1DC',         // fondo de la pantalla de carga
+    enableNotifications: true,
+    splashScreenFadeOutDuration: 300,
+    generatorApp: 'cosland',
+    fallbackType: 'customtabs',         // si no hay Chrome compatible, abre en pestaña personalizada
+    enableSiteSettingsShortcut: 'true',
+    orientation: 'portrait',
+]
+
+// Firma: la llave llega por variables de entorno (GitHub Actions o tu PC), nunca va en el repo
+def keystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+
+android {
+    compileSdkVersion 36
+    namespace "com.cosland.app"
+    defaultConfig {
+        applicationId "com.cosland.app"
+        minSdkVersion 21
+        targetSdkVersion 36
+        versionCode ((project.findProperty('appVersionCode') ?: '1').toString().toInteger())
+        versionName ((project.findProperty('appVersionName') ?: '1.0.0').toString())
+
+        resValue "string", "appName", twaManifest.name
+        resValue "string", "launcherName", twaManifest.launcherName
+
+        def launchUrl = "https://" + twaManifest.hostName + twaManifest.launchUrl
+        resValue "string", "launchUrl", launchUrl
+        resValue "string", "webManifestUrl", "https://" + twaManifest.hostName + "/manifest.webmanifest"
+        resValue "string", "hostName", twaManifest.hostName
+
+        // Relación entre la app y la web (Digital Asset Links). La web responde con
+        // /.well-known/assetlinks.json; si coinciden, la app abre sin barra de direcciones.
+        resValue "string", "assetStatements",
+            '[{ \\"relation\\": [\\"delegate_permission/common.handle_all_urls\\"], ' +
+            '\\"target\\": { \\"namespace\\": \\"web\\", \\"site\\": \\"https://' + twaManifest.hostName + '\\" } }]'
+
+        resValue "color", "colorPrimary", twaManifest.themeColor
+        resValue "color", "colorPrimaryDark", twaManifest.themeColorDark
+        resValue "color", "navigationColor", twaManifest.navigationColor
+        resValue "color", "navigationColorDark", twaManifest.navigationColorDark
+        resValue "color", "navigationDividerColor", twaManifest.navigationDividerColor
+        resValue "color", "navigationDividerColorDark", twaManifest.navigationDividerColorDark
+        resValue "color", "backgroundColor", twaManifest.backgroundColor
+
+        resValue "string", "providerAuthority", twaManifest.applicationId + '.fileprovider'
+        resValue "bool", "enableNotification", twaManifest.enableNotifications.toString()
+        resValue "integer", "splashScreenFadeOutDuration", twaManifest.splashScreenFadeOutDuration.toString()
+        resValue "string", "generatorApp", twaManifest.generatorApp
+        resValue "string", "fallbackType", twaManifest.fallbackType
+        resValue "bool", "enableSiteSettingsShortcut", twaManifest.enableSiteSettingsShortcut
+        resValue "string", "orientation", twaManifest.orientation
+    }
+    signingConfigs {
+        release {
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS') ?: 'cosland'
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD') ?: System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            if (keystorePath) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    lintOptions {
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.7.4'
+}

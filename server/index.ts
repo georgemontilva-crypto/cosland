@@ -22,6 +22,17 @@ app.use(cookieParser());
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
+// Vínculo entre la web y la app Android (Digital Asset Links). Con las huellas correctas
+// en ANDROID_SHA256, la app abre a pantalla completa, sin barra de direcciones.
+app.get("/.well-known/assetlinks.json", (_req, res) => {
+  const fingerprints = (process.env.ANDROID_SHA256 ?? "").split(",").map((f) => f.trim().toUpperCase())
+    .filter((f) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(f));
+  res.set("Cache-Control", "public, max-age=300").json(fingerprints.length ? [{
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: { namespace: "android_app", package_name: process.env.ANDROID_PACKAGE?.trim() || "com.cosland.app", sha256_cert_fingerprints: fingerprints },
+  }] : []);
+});
+
 // Freno a intentos repetidos de entrar o registrarse
 const authLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false });
 app.use(["/api/trpc/auth.login", "/api/trpc/auth.register"], authLimiter);

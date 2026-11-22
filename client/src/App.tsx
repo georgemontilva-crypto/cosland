@@ -16,6 +16,7 @@ import Favorites from "./pages/Favorites";
 import Messages from "./pages/Messages";
 import Admin from "./pages/Admin";
 import Safety from "./pages/Safety";
+import { DeleteAccount, Privacy, Terms } from "./pages/Legal";
 import { Empty } from "./components/ui";
 import { Link } from "wouter";
 
@@ -48,6 +49,9 @@ export default function App() {
         <Route path="/mensajes/:id">{(p) => <Messages id={Number(p.id)} />}</Route>
         <Route path="/admin" component={Admin} />
         <Route path="/compra-segura" component={Safety} />
+        <Route path="/privacidad" component={Privacy} />
+        <Route path="/terminos" component={Terms} />
+        <Route path="/eliminar-cuenta" component={DeleteAccount} />
         <Route>
           <div className="wrap py-16">
             <Empty title="Esta página no existe" action={<Link href="/" className="btn btn-ink">Volver al inicio</Link>}>

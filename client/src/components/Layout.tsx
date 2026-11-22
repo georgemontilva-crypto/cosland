@@ -97,7 +97,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <path fill="currentColor" d="M0 60V32c120-30 240-30 360 0s240 30 360 0 240-30 360 0 240 30 360 0v28z" />
           </svg>
           <div className="bg-ink text-cream">
-            <div className="wrap py-10 grid gap-8 md:grid-cols-[1.4fr_1fr_1fr]">
+            <div className="wrap pt-10 pb-7 grid gap-8 md:grid-cols-[1.4fr_1fr_1fr]">
               <div>
                 <img src="/logo-cream.png" alt="Cosland" className="h-11 w-auto" />
                 <p className="mt-4 text-cream/75 max-w-sm">El mercado de la comunidad cosplayer, otaku y geek. Cada quien con su vitrina.</p>
@@ -113,6 +113,11 @@ export default function Layout({ children }: { children: ReactNode }) {
                 <Link href="/compra-segura" className="hover:underline">Consejos de compra segura</Link>
               </nav>
             </div>
+            <nav className="wrap pb-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-bold" aria-label="Legal">
+              <Link href="/terminos" className="hover:underline">Términos de uso</Link>
+              <Link href="/privacidad" className="hover:underline">Privacidad</Link>
+              <Link href="/eliminar-cuenta" className="hover:underline">Eliminar mi cuenta</Link>
+            </nav>
             <p className="wrap pb-8 text-sm text-cream/60">Cosland conecta a compradores y vendedores. Cada venta se acuerda directamente entre las dos personas.</p>
           </div>
         </footer>

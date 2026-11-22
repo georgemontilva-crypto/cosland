@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import sharp from "sharp";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 const { R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL } = process.env;
 const useR2 = Boolean(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET && R2_PUBLIC_URL);
@@ -38,4 +38,16 @@ export async function saveImage(buffer: Buffer): Promise<string> {
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, webp);
   return `/uploads/${key}`;
+}
+
+// Borra fotos subidas (al eliminar una cuenta). Las de muestra y las externas se ignoran.
+export async function deleteImages(urls: (string | null | undefined)[]) {
+  const base = R2_PUBLIC_URL?.replace(/\/$/, "");
+  await Promise.allSettled(urls.filter((u): u is string => Boolean(u)).map(async (url) => {
+    if (s3 && base && url.startsWith(base + "/")) {
+      await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: url.slice(base.length + 1) }));
+    } else if (url.startsWith("/uploads/img/") && !url.includes("..")) {
+      await fs.unlink(path.join(UPLOAD_DIR, url.slice("/uploads/".length)));
+    }
+  }));
 }
