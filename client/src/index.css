@@ -1,0 +1,118 @@
+@import "@fontsource/m-plus-rounded-1c/latin-400.css";
+@import "@fontsource/m-plus-rounded-1c/latin-500.css";
+@import "@fontsource/m-plus-rounded-1c/latin-700.css";
+@import "@fontsource/m-plus-rounded-1c/latin-800.css";
+@import "tailwindcss";
+
+/* Kana del logo (コスランド): un solo archivo, solo para los acentos en japonés */
+@font-face {
+  font-family: "M PLUS Rounded 1c";
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/kana-700.woff2") format("woff2");
+  unicode-range: U+3041-309f, U+30a0-30ff;
+}
+
+@theme {
+  --font-sans: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", ui-rounded, system-ui, sans-serif;
+
+  --color-cream: #fbf1dc;
+  --color-paper: #fffaef;
+  --color-oat: #f3e6cb;
+  --color-ink: #2a211c;
+  --color-cocoa: #6b5a4e;
+  --color-sakura: #f6c3cf;
+  --color-matcha: #cde4be;
+  --color-ramune: #bcdfee;
+  --color-fuji: #d8cbf0;
+  --color-yuzu: #f8e29c;
+  --color-momo: #fad0b5;
+  --color-berry: #c2456a;
+
+  --radius-blob: 2rem;
+}
+
+@layer base {
+  html { background: var(--color-cream); color: var(--color-ink); -webkit-text-size-adjust: 100%; }
+  body { font-family: var(--font-sans); font-weight: 500; line-height: 1.55; min-height: 100dvh; }
+  h1, h2, h3 { font-weight: 800; line-height: 1.12; letter-spacing: -0.015em; text-wrap: balance; }
+  p { text-wrap: pretty; }
+  ::selection { background: var(--color-yuzu); }
+  :focus-visible { outline: 3px solid var(--color-ink); outline-offset: 3px; border-radius: 0.75rem; }
+  button, [role="button"], a, select, summary { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  img { max-width: 100%; }
+}
+
+@layer components {
+  .wrap { width: 100%; max-width: 76rem; margin-inline: auto; padding-inline: 1.125rem; }
+  @media (min-width: 768px) { .wrap { padding-inline: 2rem; } }
+
+  /* Botones: píldoras con contorno de tinta, como el trazo del logo */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    min-height: 2.875rem; padding: 0.55rem 1.3rem; border-radius: 999px;
+    border: 1.5px solid var(--color-ink); background: var(--color-paper); color: var(--color-ink);
+    font-weight: 700; font-size: 0.975rem; line-height: 1.2; text-align: center;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  }
+  .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 3px 0 var(--color-ink); }
+  .btn:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+  .btn:disabled { opacity: 0.5; }
+  .btn-ink { background: var(--color-ink); color: var(--color-cream); }
+  .btn-ink:hover:not(:disabled) { box-shadow: 0 3px 0 var(--color-cocoa); }
+  .btn-sakura { background: var(--color-sakura); }
+  .btn-matcha { background: var(--color-matcha); }
+  .btn-yuzu { background: var(--color-yuzu); }
+  .btn-sm { min-height: 2.25rem; padding: 0.3rem 0.9rem; font-size: 0.875rem; }
+  .btn-ghost { border-color: transparent; background: transparent; }
+  .btn-ghost:hover:not(:disabled) { box-shadow: none; transform: none; background: var(--color-oat); }
+
+  .field-label { display: block; font-weight: 700; font-size: 0.925rem; margin-bottom: 0.35rem; }
+  .field-hint { font-size: 0.825rem; color: var(--color-cocoa); margin-top: 0.3rem; }
+  .input {
+    width: 100%; min-height: 2.875rem; padding: 0.6rem 1rem; border-radius: 1.1rem;
+    border: 1.5px solid color-mix(in srgb, var(--color-ink) 28%, transparent);
+    background: var(--color-paper); color: var(--color-ink); font: inherit; font-size: 1rem;
+  }
+  .input::placeholder { color: color-mix(in srgb, var(--color-cocoa) 70%, transparent); }
+  .input:focus { outline: none; border-color: var(--color-ink); box-shadow: 0 0 0 3px var(--color-yuzu); }
+  textarea.input { border-radius: 1.25rem; resize: vertical; min-height: 7rem; }
+  select.input { appearance: none; padding-right: 2.5rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%232a211c' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 0.9rem center; }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 0.35rem; white-space: nowrap;
+    padding: 0.4rem 0.95rem; border-radius: 999px; font-weight: 700; font-size: 0.9rem;
+    border: 1.5px solid color-mix(in srgb, var(--color-ink) 28%, transparent); background: var(--color-paper);
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .chip:hover { border-color: var(--color-ink); }
+  .chip[aria-pressed="true"], .chip-on { background: var(--color-ink); color: var(--color-cream); border-color: var(--color-ink); }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.6rem; border-radius: 999px;
+    font-size: 0.775rem; font-weight: 700; background: var(--color-paper); border: 1.5px solid var(--color-ink);
+  }
+
+  .panel { background: var(--color-paper); border: 1.5px solid var(--color-ink); border-radius: var(--radius-blob); }
+  .soft { background: var(--color-paper); border-radius: var(--radius-blob); }
+
+  .kana { font-weight: 700; letter-spacing: 0.12em; color: var(--color-cocoa); }
+
+  .scroll-row { display: flex; gap: 0.6rem; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; padding-block: 0.25rem; }
+  .scroll-row::-webkit-scrollbar { display: none; }
+  .scroll-row > * { scroll-snap-align: start; flex-shrink: 0; }
+}
+
+/* El toldo: al cargar la portada, cada toldo se despliega una sola vez */
+@keyframes unroll { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.unroll { transform-origin: top; animation: unroll 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+@keyframes pop { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+.pop { animation: pop 0.2s ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .unroll, .pop { animation: none; }
+  .btn { transition: none; }
+}

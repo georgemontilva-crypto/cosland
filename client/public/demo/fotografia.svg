@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000">
+<rect width="800" height="1000" fill="#bcdfee"/>
+<path d="M-40 760c160-120 300-40 440-110s250-190 440-90v480H-40z" fill="#fad0b5"/>
+<circle cx="640" cy="190" r="110" fill="#fffaef"/>
+<circle cx="400" cy="470" r="250" fill="#fffaef" stroke="#2a211c" stroke-width="6"/>
+<g transform="translate(400 470) scale(13) translate(-12 -12)" fill="none" stroke="#2a211c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></g>
+<text x="56" y="92" font-family="sans-serif" font-weight="700" font-size="34" fill="#2a211c" opacity=".55">Foto de muestra</text>
+</svg>

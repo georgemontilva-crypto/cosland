@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000">
+<rect width="800" height="1000" fill="#d8cbf0"/>
+<path d="M-40 760c160-120 300-40 440-110s250-190 440-90v480H-40z" fill="#f8e29c"/>
+<circle cx="640" cy="190" r="110" fill="#fffaef"/>
+<circle cx="400" cy="470" r="250" fill="#fffaef" stroke="#2a211c" stroke-width="6"/>
+<g transform="translate(400 470) scale(13) translate(-12 -12)" fill="none" stroke="#2a211c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></g>
+<text x="56" y="92" font-family="sans-serif" font-weight="700" font-size="34" fill="#2a211c" opacity=".55">Foto de muestra</text>
+</svg>

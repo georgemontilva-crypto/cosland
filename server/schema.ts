@@ -1,0 +1,142 @@
+import {
+  mysqlTable, int, varchar, text, boolean, timestamp, mysqlEnum, uniqueIndex, index, customType, primaryKey,
+} from "drizzle-orm/mysql-core";
+import {
+  ACCENT_IDS, CONDITION_IDS, DEAL_IDS, DELIVERY_IDS, SHOP_KIND_IDS,
+} from "../shared/catalog";
+
+// Lista de URLs guardada como texto JSON (funciona igual en MySQL y MariaDB)
+const stringList = customType<{ data: string[]; driverData: string }>({
+  dataType: () => "text",
+  toDriver: (v) => JSON.stringify(v ?? []),
+  fromDriver: (v) => {
+    try { const p = typeof v === "string" ? JSON.parse(v) : v; return Array.isArray(p) ? p : []; } catch { return []; }
+  },
+});
+
+export const users = mysqlTable("users", {
+  id: int("id").autoincrement().primaryKey(),
+  email: varchar("email", { length: 190 }).notNull(),
+  passwordHash: varchar("password_hash", { length: 100 }).notNull(),
+  name: varchar("name", { length: 80 }).notNull(),
+  role: mysqlEnum("role", ["user", "admin"]).notNull().default("user"),
+  banned: boolean("banned").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("users_email_idx").on(t.email)]);
+
+// Vitrina: el perfil público de venta de cada persona o tienda
+export const shops = mysqlTable("shops", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  handle: varchar("handle", { length: 40 }).notNull(),
+  name: varchar("name", { length: 80 }).notNull(),
+  kind: mysqlEnum("kind", SHOP_KIND_IDS).notNull().default("cosplayer"),
+  bio: text("bio"),
+  avatarUrl: varchar("avatar_url", { length: 500 }),
+  bannerUrl: varchar("banner_url", { length: 500 }),
+  accent: mysqlEnum("accent", ACCENT_IDS).notNull().default("sakura"),
+  city: varchar("city", { length: 80 }),
+  country: varchar("country", { length: 60 }),
+  whatsapp: varchar("whatsapp", { length: 30 }),
+  instagram: varchar("instagram", { length: 60 }),
+  tiktok: varchar("tiktok", { length: 60 }),
+  hasStore: boolean("has_store").notNull().default(false),
+  address: varchar("address", { length: 255 }),
+  hours: varchar("hours", { length: 255 }),
+  verified: boolean("verified").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("shops_handle_idx").on(t.handle), uniqueIndex("shops_user_idx").on(t.userId)]);
+
+export const listings = mysqlTable("listings", {
+  id: int("id").autoincrement().primaryKey(),
+  shopId: int("shop_id").notNull(),
+  kind: mysqlEnum("kind", ["product", "service"]).notNull().default("product"),
+  deal: mysqlEnum("deal", DEAL_IDS).notNull().default("venta"),
+  category: varchar("category", { length: 40 }).notNull(),
+  title: varchar("title", { length: 120 }).notNull(),
+  description: text("description").notNull(),
+  priceCents: int("price_cents"),
+  acceptsTrade: boolean("accepts_trade").notNull().default(false),
+  condition: mysqlEnum("item_condition", CONDITION_IDS),
+  size: varchar("size", { length: 30 }),
+  measurements: varchar("measurements", { length: 255 }),
+  series: varchar("series", { length: 100 }),
+  characterName: varchar("character_name", { length: 100 }),
+  delivery: mysqlEnum("delivery", DELIVERY_IDS).notNull().default("ambos"),
+  images: stringList("images").notNull(),
+  status: mysqlEnum("status", ["active", "paused", "sold", "removed"]).notNull().default("active"),
+  featured: boolean("featured").notNull().default(false),
+  views: int("views").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+}, (t) => [
+  index("listings_shop_idx").on(t.shopId),
+  index("listings_browse_idx").on(t.status, t.category, t.createdAt),
+]);
+
+export const favorites = mysqlTable("favorites", {
+  userId: int("user_id").notNull(),
+  listingId: int("listing_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.listingId] })]);
+
+export const follows = mysqlTable("follows", {
+  userId: int("user_id").notNull(),
+  shopId: int("shop_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.shopId] }), index("follows_shop_idx").on(t.shopId)]);
+
+// Un hilo por comprador y vitrina
+export const conversations = mysqlTable("conversations", {
+  id: int("id").autoincrement().primaryKey(),
+  buyerId: int("buyer_id").notNull(),
+  shopId: int("shop_id").notNull(),
+  lastBody: varchar("last_body", { length: 200 }),
+  lastAt: timestamp("last_at").notNull().defaultNow(),
+  buyerUnread: int("buyer_unread").notNull().default(0),
+  sellerUnread: int("seller_unread").notNull().default(0),
+}, (t) => [uniqueIndex("conv_pair_idx").on(t.buyerId, t.shopId), index("conv_shop_idx").on(t.shopId)]);
+
+export const messages = mysqlTable("messages", {
+  id: int("id").autoincrement().primaryKey(),
+  conversationId: int("conversation_id").notNull(),
+  senderId: int("sender_id").notNull(),
+  body: text("body").notNull(),
+  listingId: int("listing_id"),
+  offerCents: int("offer_cents"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [index("msg_conv_idx").on(t.conversationId, t.id)]);
+
+export const reviews = mysqlTable("reviews", {
+  id: int("id").autoincrement().primaryKey(),
+  shopId: int("shop_id").notNull(),
+  authorId: int("author_id").notNull(),
+  rating: int("rating").notNull(),
+  comment: text("comment"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("reviews_pair_idx").on(t.shopId, t.authorId)]);
+
+// "Se busca": pedidos de la comunidad para que los vendedores respondan
+export const wanted = mysqlTable("wanted", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  title: varchar("title", { length: 120 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 40 }).notNull(),
+  budgetCents: int("budget_cents"),
+  size: varchar("size", { length: 30 }),
+  city: varchar("city", { length: 80 }),
+  contact: varchar("contact", { length: 120 }),
+  status: mysqlEnum("status", ["open", "closed", "removed"]).notNull().default("open"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [index("wanted_status_idx").on(t.status, t.createdAt)]);
+
+export const reports = mysqlTable("reports", {
+  id: int("id").autoincrement().primaryKey(),
+  reporterId: int("reporter_id").notNull(),
+  listingId: int("listing_id").notNull(),
+  reason: varchar("reason", { length: 120 }).notNull(),
+  detail: text("detail"),
+  status: mysqlEnum("status", ["open", "resolved"]).notNull().default("open"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
