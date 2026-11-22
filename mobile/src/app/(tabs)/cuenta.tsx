@@ -10,6 +10,7 @@ import { useSession } from "@/lib/session";
 import { BORDER, C } from "@/lib/theme";
 import { Awning, Avatar, Btn, Empty, H1, H2, Loading, Photo, Sheet, T, Tag, panel, soft, useToast } from "@/ui/core";
 import { PAD } from "@/ui/cards";
+import FollowersSheet from "@/ui/FollowersSheet";
 
 const STATUS: Record<string, { label: string; bg: string }> = {
   active: { label: "Publicado", bg: C.matcha }, paused: { label: "En pausa", bg: C.yuzu }, sold: { label: "Vendido", bg: C.fuji },
@@ -32,6 +33,7 @@ export default function Account() {
   const utils = trpc.useUtils();
   const mine = trpc.listing.mine.useQuery(undefined, { enabled: Boolean(me?.shop) });
   const [removing, setRemoving] = useState<null | { id: number; title: string }>(null);
+  const [followers, setFollowers] = useState(false);
   const setStatus = trpc.listing.setStatus.useMutation({ onSuccess: () => { utils.listing.invalidate(); utils.shop.invalidate(); setRemoving(null); toast("Publicación actualizada"); } });
   const items = mine.data ?? [];
   const shop = me?.shop;
@@ -83,11 +85,15 @@ export default function Account() {
                 </View>
               </View>
               <View style={{ flexDirection: "row", borderTopWidth: BORDER, borderTopColor: C.ink }}>
-                {[["Publicadas", items.filter((l) => l.status === "active").length], ["Vendidas", items.filter((l) => l.status === "sold").length], ["Visitas", items.reduce((a, l) => a + l.views, 0)]].map(([k, v], i) => (
-                  <View key={k} style={[{ flex: 1, alignItems: "center", paddingVertical: 14 }, i > 0 && { borderLeftWidth: BORDER, borderLeftColor: C.ink }]}>
-                    <T w="black" size={24}>{v}</T><T size={13} color={C.cocoa}>{k}</T>
+                {[["Publicadas", items.filter((l) => l.status === "active").length], ["Vendidas", items.filter((l) => l.status === "sold").length], ["Visitas", items.reduce((a, l) => a + l.views, 0)]].map(([k, v]) => (
+                  <View key={k} style={{ flex: 1, alignItems: "center", paddingVertical: 14, borderRightWidth: BORDER, borderRightColor: C.ink }}>
+                    <T w="black" size={22}>{v}</T><T size={12.5} color={C.cocoa}>{k}</T>
                   </View>
                 ))}
+                <Pressable accessibilityRole="button" accessibilityLabel={`${shop.followers} seguidores, ver quiénes son`} onPress={() => setFollowers(true)}
+                  style={({ pressed }) => [{ flex: 1, alignItems: "center", paddingVertical: 14 }, pressed && { backgroundColor: C.oat }]}>
+                  <T w="black" size={22}>{shop.followers}</T><T size={12.5} color={C.cocoa} style={{ textDecorationLine: "underline" }}>Seguidores</T>
+                </Pressable>
               </View>
             </View>
 
@@ -137,6 +143,7 @@ export default function Account() {
         {me && <T size={13} color={C.cocoa} center>{me.email}</T>}
       </ScrollView>
 
+      {shop && <FollowersSheet open={followers} onClose={() => setFollowers(false)} shopId={shop.id} mine />}
       <Sheet open={Boolean(removing)} onClose={() => setRemoving(null)} title="Eliminar publicación">
         <View style={{ gap: 16 }}>
           <T size={16}>Vas a eliminar “{removing?.title}”. No se puede deshacer.</T>

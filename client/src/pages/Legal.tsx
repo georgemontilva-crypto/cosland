@@ -37,7 +37,7 @@ export function Privacy() {
       </section>
       <section>
         <h2>Qué ven los demás</h2>
-        <p>Tu vitrina, tus publicaciones, tus reseñas y los contactos que pongas en tu vitrina son públicos. Tu correo y tus mensajes no lo son: los mensajes solo los ven tú y la otra persona de la conversación. El equipo de Cosland puede revisar contenido denunciado.</p>
+        <p>Tu vitrina, tus publicaciones, tus reseñas y los contactos que pongas en tu vitrina son públicos. También es visible a qué vitrinas sigues: en la lista de seguidores apareces con tu vitrina o, si no tienes, solo con tu primer nombre. Tu correo y tus mensajes no lo son: los mensajes solo los ven tú y la otra persona de la conversación. El equipo de Cosland puede revisar contenido denunciado.</p>
       </section>
       <section>
         <h2>Con quién se comparten</h2>

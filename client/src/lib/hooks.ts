@@ -60,6 +60,12 @@ export function useRealtime(userId: number | null) {
         const open = location.pathname === `/mensajes/${m.conversationId}` && document.visibilityState === "visible";
         if (m.from !== userId && !open) toast(`Nuevo mensaje de ${m.fromName}`);
       });
+      es.addEventListener("follow", (e) => {
+        const m = JSON.parse((e as MessageEvent).data) as { name: string };
+        utils.shop.invalidate();
+        utils.auth.me.invalidate();
+        toast(`${m.name} empezó a seguir tu vitrina`);
+      });
       es.onerror = () => {
         // El navegador reintenta solo; si la conexión quedó cerrada del todo, se abre otra
         if (es?.readyState === EventSource.CLOSED) { clearTimeout(retry); retry = setTimeout(connect, 5000); }

@@ -11,6 +11,7 @@ import { BORDER, C } from "@/lib/theme";
 import { Awning, Avatar, Btn, Chip, Empty, Field, IconBtn, Input, Loading, Screen, Stars, T, panel, soft, useToast } from "@/ui/core";
 import { Grid, PAD } from "@/ui/cards";
 import ContactSheet from "@/ui/ContactSheet";
+import FollowersSheet from "@/ui/FollowersSheet";
 
 function Reviews({ shopId, shopName, handle }: { shopId: number; shopName: string; handle: string }) {
   const { me } = useSession();
@@ -63,9 +64,10 @@ export default function ShopScreen() {
   const q = trpc.shop.byHandle.useQuery({ handle }, { retry: false });
   const [tab, setTab] = useState<"all" | "product" | "service" | "reviews">("all");
   const [contact, setContact] = useState(false);
+  const [followers, setFollowers] = useState(false);
   const items = trpc.listing.search.useQuery({ shopId: q.data?.id, kind: tab === "product" || tab === "service" ? tab : undefined }, { enabled: Boolean(q.data) && tab !== "reviews" });
   const follow = trpc.shop.toggleFollow.useMutation({
-    onSuccess: (r) => { utils.shop.byHandle.invalidate(); toast(r.following ? "Ahora sigues esta vitrina" : "Dejaste de seguir esta vitrina"); },
+    onSuccess: (r) => { utils.shop.invalidate(); toast(r.following ? "Ahora sigues esta vitrina" : "Dejaste de seguir esta vitrina"); },
   });
 
   if (q.isLoading) return <Screen title=""><Loading /></Screen>;
@@ -88,7 +90,9 @@ export default function ShopScreen() {
           <T color={C.cocoa}>{shopKindLabel(s.kind)}</T>
           {s.city ? <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}><MapPin size={15} color={C.cocoa} /><T color={C.cocoa}>{s.city}{s.country ? `, ${s.country}` : ""}</T></View> : null}
           {s.reviewCount > 0 && <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}><Stars value={s.rating} size={14} /><T color={C.cocoa}>{s.rating.toFixed(1)} ({s.reviewCount})</T></View>}
-          <T color={C.cocoa}>{s.followers} {s.followers === 1 ? "seguidor" : "seguidores"}</T>
+          <Pressable accessibilityRole="button" accessibilityLabel={`${s.followers} ${s.followers === 1 ? "seguidor" : "seguidores"}, ver quiénes son`} onPress={() => setFollowers(true)} hitSlop={8}>
+            <T w="bold" style={{ textDecorationLine: "underline" }}>{s.followers} {s.followers === 1 ? "seguidor" : "seguidores"}</T>
+          </Pressable>
         </View>
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
@@ -138,6 +142,7 @@ export default function ShopScreen() {
               action={s.isMine ? <Btn label="Publicar mi primer artículo" kind="sakura" onPress={() => router.push("/publicar")} /> : undefined} />}
       </View>
       <ContactSheet open={contact} onClose={() => setContact(false)} shopId={s.id} shopName={s.name} />
+      <FollowersSheet open={followers} onClose={() => setFollowers(false)} shopId={s.id} mine={s.isMine} />
     </Screen>
   );
 }

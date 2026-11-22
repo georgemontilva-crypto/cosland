@@ -7,6 +7,7 @@ import { useMe } from "@/lib/hooks";
 import { Awning, Avatar, Empty, Field, Loading, Stars, useToast } from "@/components/ui";
 import { ListingGrid } from "@/components/cards";
 import ContactModal from "@/components/ContactModal";
+import FollowersModal from "@/components/FollowersModal";
 import { share } from "./ListingPage";
 
 function Reviews({ shopId, shopName }: { shopId: number; shopName: string }) {
@@ -65,9 +66,10 @@ export default function ShopPage({ handle }: { handle: string }) {
   const q = trpc.shop.byHandle.useQuery({ handle }, { retry: false });
   const [tab, setTab] = useState<"all" | "product" | "service" | "reviews">("all");
   const [contact, setContact] = useState(false);
+  const [followers, setFollowers] = useState(false);
   const items = trpc.listing.search.useQuery({ shopId: q.data?.id, kind: tab === "product" || tab === "service" ? tab : undefined }, { enabled: Boolean(q.data) && tab !== "reviews" });
   const follow = trpc.shop.toggleFollow.useMutation({
-    onSuccess: (r) => { utils.shop.byHandle.invalidate(); toast(r.following ? "Ahora sigues esta vitrina" : "Dejaste de seguir esta vitrina"); },
+    onSuccess: (r) => { utils.shop.invalidate(); toast(r.following ? "Ahora sigues esta vitrina" : "Dejaste de seguir esta vitrina"); },
   });
 
   if (q.isLoading) return <Loading />;
@@ -95,7 +97,7 @@ export default function ShopPage({ handle }: { handle: string }) {
               <span>{shopKindLabel(s.kind)}</span>
               {s.city && <span className="inline-flex items-center gap-1"><MapPin size={15} />{s.city}{s.country ? `, ${s.country}` : ""}</span>}
               {s.reviewCount > 0 && <span className="inline-flex items-center gap-1.5"><Stars value={s.rating} size={14} />{s.rating.toFixed(1)} ({s.reviewCount})</span>}
-              <span>{s.followers} {s.followers === 1 ? "seguidor" : "seguidores"}</span>
+              <button className="font-bold text-ink underline underline-offset-4" onClick={() => setFollowers(true)}>{s.followers} {s.followers === 1 ? "seguidor" : "seguidores"}</button>
             </p>
           </div>
         </div>
@@ -147,6 +149,7 @@ export default function ShopPage({ handle }: { handle: string }) {
         )}
       </div>
       {contact && <ContactModal shopId={s.id} shopName={s.name} onClose={() => setContact(false)} />}
+      {followers && <FollowersModal shopId={s.id} mine={s.isMine} onClose={() => setFollowers(false)} />}
     </div>
   );
 }

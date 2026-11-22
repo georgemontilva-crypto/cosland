@@ -2,6 +2,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { TRPCError } from "@trpc/server";
 import { and, or, eq, ne, like, desc, asc, sql, inArray, gte, lte, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/mysql-core";
 import { db } from "./db";
 import { publish } from "./realtime";
 import { deleteImages } from "./storage";
@@ -59,7 +60,10 @@ const authRouter = router({
     }
     return {
       ...ctx.user, unread,
-      shop: shop ? { id: shop.id, handle: shop.handle, name: shop.name, accent: shop.accent, avatarUrl: shop.avatarUrl } : null,
+      shop: shop ? {
+        id: shop.id, handle: shop.handle, name: shop.name, accent: shop.accent, avatarUrl: shop.avatarUrl,
+        followers: (await db.select({ c: n(sql`count(*)`) }).from(follows).where(eq(follows.shopId, shop.id)))[0]?.c ?? 0,
+      } : null,
     };
   }),
 
@@ -207,12 +211,46 @@ const shopRouter = router({
     }),
 
   toggleFollow: authedProcedure.input(z.object({ shopId: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const [shop] = await db.select({ id: shops.id, userId: shops.userId }).from(shops).where(eq(shops.id, input.shopId)).limit(1);
+    if (!shop) throw fail("NOT_FOUND", "No encontramos esa vitrina.");
+    if (shop.userId === ctx.user.id) throw fail("BAD_REQUEST", "Esta es tu propia vitrina.");
     const cond = and(eq(follows.userId, ctx.user.id), eq(follows.shopId, input.shopId));
     const [f] = await db.select().from(follows).where(cond).limit(1);
     if (f) await db.delete(follows).where(cond);
-    else await db.insert(follows).values({ userId: ctx.user.id, shopId: input.shopId });
+    else {
+      await db.insert(follows).values({ userId: ctx.user.id, shopId: input.shopId });
+      // Aviso en vivo al dueño de la vitrina, con el nombre público de quien lo sigue
+      const mine = await shopOf(ctx.user.id);
+      publish([shop.userId], "follow", { shopId: shop.id, name: mine?.name ?? ctx.user.name.split(" ")[0] });
+    }
     return { following: !f };
   }),
+
+  // Quién sigue a una vitrina. Se muestra la vitrina del seguidor si tiene; si no, solo su primer nombre.
+  followers: publicProcedure.input(z.object({ shopId: z.number().int() })).query(async ({ input }) => {
+    const theirs = alias(shops, "follower_shop");
+    const rows = await db.select({
+      id: follows.userId, userName: users.name, at: follows.createdAt,
+      handle: theirs.handle, shopName: theirs.name, avatarUrl: theirs.avatarUrl, accent: theirs.accent, verified: theirs.verified,
+    }).from(follows)
+      .innerJoin(users, eq(users.id, follows.userId))
+      .leftJoin(theirs, eq(theirs.userId, follows.userId))
+      .where(and(eq(follows.shopId, input.shopId), eq(users.banned, false)))
+      .orderBy(desc(follows.createdAt)).limit(300);
+    return rows.map((r) => ({
+      id: r.id, name: r.shopName ?? r.userName.split(" ")[0], handle: r.handle, avatarUrl: r.avatarUrl,
+      accent: r.accent, verified: Boolean(r.verified), at: r.at,
+    }));
+  }),
+
+  // Las vitrinas que sigue la persona que tiene la sesión abierta
+  following: authedProcedure.query(({ ctx }) =>
+    db.select({
+      id: shops.id, handle: shops.handle, name: shops.name, kind: shops.kind, bio: shops.bio, avatarUrl: shops.avatarUrl,
+      accent: shops.accent, city: shops.city, country: shops.country, verified: shops.verified, hasStore: shops.hasStore,
+      ...shopStats,
+    }).from(follows).innerJoin(shops, eq(shops.id, follows.shopId))
+      .where(eq(follows.userId, ctx.user.id)).orderBy(desc(follows.createdAt)).limit(200)),
 });
 
 /* ───────── Publicaciones ───────── */

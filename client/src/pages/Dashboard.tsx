@@ -6,6 +6,8 @@ import { useMe } from "@/lib/hooks";
 import { Awning, Avatar, Empty, Loading, useToast } from "@/components/ui";
 import { Photo } from "@/components/cards";
 import ShopForm from "./ShopForm";
+import FollowersModal from "@/components/FollowersModal";
+import { useState } from "react";
 
 const STATUS: Record<string, { label: string; bg: string }> = {
   active: { label: "Publicado", bg: "#cde4be" }, paused: { label: "En pausa", bg: "#f8e29c" }, sold: { label: "Vendido", bg: "#d8cbf0" },
@@ -18,6 +20,7 @@ export default function Dashboard() {
   const mine = trpc.listing.mine.useQuery(undefined, { enabled: Boolean(me?.shop) });
   const setStatus = trpc.listing.setStatus.useMutation({ onSuccess: () => { utils.listing.invalidate(); toast("Publicación actualizada"); } });
 
+  const [followers, setFollowers] = useState(false);
   if (loading) return <Loading />;
   if (!me || !me.shop) return <ShopForm />;
   const shop = me.shop;
@@ -46,10 +49,13 @@ export default function Dashboard() {
             <Link href="/mi-vitrina/editar" className="btn"><Pencil size={17} />Editar</Link>
           </div>
         </div>
-        <dl className="grid grid-cols-3 border-t-[1.5px] border-ink text-center">
-          {[["Publicadas", items.filter((l) => l.status === "active").length], ["Vendidas", items.filter((l) => l.status === "sold").length], ["Visitas", views]].map(([k, v], i) => (
-            <div key={k} className={`py-4 ${i ? "border-l-[1.5px] border-ink" : ""}`}><dd className="text-2xl md:text-3xl font-extrabold">{v}</dd><dt className="text-sm text-cocoa">{k}</dt></div>
+        <dl className="grid grid-cols-4 border-t-[1.5px] border-ink text-center">
+          {[["Publicadas", items.filter((l) => l.status === "active").length], ["Vendidas", items.filter((l) => l.status === "sold").length], ["Visitas", views]].map(([k, v]) => (
+            <div key={k} className="py-4 border-r-[1.5px] border-ink"><dd className="text-2xl md:text-3xl font-extrabold">{v}</dd><dt className="text-sm text-cocoa">{k}</dt></div>
           ))}
+          <button className="py-4 hover:bg-oat" onClick={() => setFollowers(true)} aria-label={`${shop.followers} seguidores, ver quiénes son`}>
+            <dd className="text-2xl md:text-3xl font-extrabold">{shop.followers}</dd><dt className="text-sm text-cocoa underline underline-offset-4">Seguidores</dt>
+          </button>
         </dl>
       </div>
 
@@ -82,6 +88,7 @@ export default function Dashboard() {
           ))}
         </ul>
       )}
+      {followers && <FollowersModal shopId={shop.id} mine onClose={() => setFollowers(false)} />}
     </div>
   );
 }

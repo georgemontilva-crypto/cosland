@@ -50,7 +50,7 @@ function Realtime({ userId }: { userId: number | null }) {
       utils.auth.me.invalidate();
       if (id) utils.chat.thread.invalidate({ id }); else utils.chat.thread.invalidate();
     };
-    const es = new EventSource<"chat">(`${API}/api/events`, { headers: authHeaders(), pollingInterval: 4000, timeout: 0 });
+    const es = new EventSource<"chat" | "follow">(`${API}/api/events`, { headers: authHeaders(), pollingInterval: 4000, timeout: 0 });
     let first = true;
     es.addEventListener("open", () => { if (!first) refresh(); first = false; });
     es.addEventListener("chat", (e) => {
@@ -58,6 +58,13 @@ function Realtime({ userId }: { userId: number | null }) {
       const m = JSON.parse(e.data) as { conversationId: number; from: number; fromName: string };
       refresh(m.conversationId);
       if (m.from !== userId && currentPath !== `/mensajes/${m.conversationId}`) toast(`Nuevo mensaje de ${m.fromName}`);
+    });
+    es.addEventListener("follow", (e) => {
+      if (!e.data) return;
+      const m = JSON.parse(e.data) as { name: string };
+      utils.shop.invalidate();
+      utils.auth.me.invalidate();
+      toast(`${m.name} empezó a seguir tu vitrina`);
     });
     // Al volver a la app se pone al día por si la conexión estuvo en pausa
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") refresh(); });
