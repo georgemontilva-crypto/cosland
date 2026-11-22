@@ -26,14 +26,14 @@ npx expo start
 
 ## Compilar para Play Store
 
-Repo → **Actions** → **App Android nativa (APK y AAB)** → **Run workflow**. Escribe la dirección sin `https://`.
+GitHub compila la app sola cada vez que cambia algo de `mobile/` en `main`. El resultado queda en repo → **Actions** → **App Android nativa (APK y AAB)** → la ejecución más reciente → **Artifacts**.
+
+La dirección del servidor y la versión salen de `mobile/release.json`. Cada vez que subas una versión nueva a Play, aumenta `versionCode` en 1.
 
 - Sin llave de firma: sale un APK de prueba para instalar en tu teléfono.
 - Con los secretos `ANDROID_KEYSTORE_BASE64` y `ANDROID_KEYSTORE_PASSWORD`: salen el APK y el AAB firmados. El `.aab` es el que se sube a Play.
 
 Cómo crear la llave está en `../android/README.md`, sección "Llave de firma".
-
-Cada vez que subas una versión nueva a Play, aumenta en 1 el número de versión.
 
 ## Comandos
 

@@ -1,26 +1,36 @@
 name: App Android nativa (APK y AAB)
 
 # La app nativa de Cosland (carpeta mobile/, React Native con Expo).
-# Se lanza a mano: pestaña Actions → "App Android nativa (APK y AAB)" → Run workflow.
+# Se compila sola cada vez que cambia la app en main. La dirección del servidor y la versión
+# salen de mobile/release.json. También se puede lanzar a mano desde la pestaña Actions.
 # Con los secretos de firma genera el APK y el AAB listos para Play Store.
 # Sin ellos genera un APK firmado con una llave de prueba, para instalar en tu teléfono.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - "shared/**"
+      - ".github/workflows/android.yml"
   workflow_dispatch:
     inputs:
       host:
-        description: "Dirección de Cosland, sin https:// (ej. cosland.app)"
-        required: true
+        description: "Dirección de Cosland sin https:// (vacío = la de mobile/release.json)"
+        required: false
         type: string
       version_name:
-        description: "Versión visible (ej. 1.0.0)"
-        required: true
-        default: "1.0.0"
+        description: "Versión visible, ej. 1.0.0 (vacío = la de mobile/release.json)"
+        required: false
         type: string
       version_code:
-        description: "Número de versión: súbelo en 1 cada vez que subas a Play"
-        required: true
-        default: "1"
+        description: "Número de versión entero (vacío = el de mobile/release.json)"
+        required: false
         type: string
+
+# Si llega un cambio nuevo mientras compila, se queda solo con el último
+concurrency:
+  group: android-nativa
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -31,15 +41,26 @@ jobs:
     timeout-minutes: 75
     env:
       CI: "1"
-      TWA_HOST: ${{ inputs.host }}
-      EXPO_PUBLIC_API_URL: https://${{ inputs.host }}
-      APP_VERSION_NAME: ${{ inputs.version_name }}
-      APP_VERSION_CODE: ${{ inputs.version_code }}
+      INPUT_HOST: ${{ inputs.host }}
+      INPUT_VERSION_NAME: ${{ inputs.version_name }}
+      INPUT_VERSION_CODE: ${{ inputs.version_code }}
       HAS_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: cosland
     steps:
       - uses: actions/checkout@v4
+
+      - name: Datos de la versión
+        run: |
+          host="${INPUT_HOST:-$(jq -r .host mobile/release.json)}"
+          name="${INPUT_VERSION_NAME:-$(jq -r .versionName mobile/release.json)}"
+          code="${INPUT_VERSION_CODE:-$(jq -r .versionCode mobile/release.json)}"
+          {
+            echo "TWA_HOST=$host"
+            echo "EXPO_PUBLIC_API_URL=https://$host"
+            echo "APP_VERSION_NAME=$name"
+            echo "APP_VERSION_CODE=$code"
+          } >> "$GITHUB_ENV"
 
       - name: Revisar datos
         run: |
@@ -115,7 +136,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: cosland-android-${{ inputs.version_name }}
+          name: cosland-android-${{ env.APP_VERSION_NAME }}-${{ env.APP_VERSION_CODE }}
           if-no-files-found: error
           path: |
             mobile/android/app/build/outputs/apk/release/*.apk
