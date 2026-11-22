@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { router } from "expo-router";
 import { ACCENTS, CATEGORIES, CONDITIONS, COUNTRIES, DEALS, DELIVERY, SHOP_KINDS, SIZES, categoryOf, slugify } from "@shared/catalog";
@@ -25,16 +25,22 @@ export function ShopForm({ onDone }: { onDone?: () => void }) {
   const [error, setError] = useState("");
   const isNew = !mine.data;
 
+  // Se rellena al abrir; después, un refresco en vivo no pisa lo que se está escribiendo
+  const settled = useRef(false);
+  const filledWith = useRef<unknown>(null);
   useEffect(() => {
     const s = mine.data;
-    if (!s) return;
+    if (!s || settled.current) return;
+    if (!mine.isFetching) settled.current = true;
+    if (filledWith.current === s) return;
+    filledWith.current = s;
     setF({
       handle: s.handle, name: s.name, kind: s.kind, bio: s.bio ?? "", avatarUrl: s.avatarUrl, bannerUrl: s.bannerUrl, accent: s.accent,
       city: s.city ?? "", country: s.country ?? "Venezuela", whatsapp: s.whatsapp ?? "", instagram: s.instagram ?? "", tiktok: s.tiktok ?? "",
       hasStore: s.hasStore, address: s.address ?? "", hours: s.hours ?? "",
     });
     setTouched(true);
-  }, [mine.data]);
+  }, [mine.data, mine.isFetching]);
 
   const save = trpc.shop.save.useMutation({
     onSuccess: async () => { await utils.invalidate(); toast(isNew ? "Tu vitrina ya está abierta" : "Vitrina guardada"); onDone?.(); },
@@ -118,14 +124,20 @@ export function ListingForm({ id }: { id?: number }) {
   const [f, setF] = useState(listingBlank);
   const [error, setError] = useState("");
 
+  const settled = useRef(false);
+  const filledWith = useRef<unknown>(null);
   useEffect(() => {
     const l = existing.data;
-    if (l) setF({
+    if (!l || settled.current) return;
+    if (!existing.isFetching) settled.current = true;
+    if (filledWith.current === l) return;
+    filledWith.current = l;
+    setF({
       category: l.category, deal: l.deal, title: l.title, description: l.description, price: l.priceCents != null ? String(l.priceCents / 100) : "",
       acceptsTrade: l.acceptsTrade, condition: l.condition ?? "usado", size: l.size ?? "", measurements: l.measurements ?? "",
       series: l.series ?? "", characterName: l.characterName ?? "", delivery: l.delivery, images: l.images,
     });
-  }, [existing.data]);
+  }, [existing.data, existing.isFetching]);
 
   const save = trpc.listing.save.useMutation({
     onSuccess: (r) => { utils.listing.invalidate(); utils.shop.invalidate(); toast(id ? "Cambios guardados" : "Publicado"); router.replace(`/p/${r.id}`); },

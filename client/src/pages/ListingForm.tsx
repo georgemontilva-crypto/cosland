@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { CATEGORIES, CONDITIONS, DEALS, DELIVERY, SIZES, categoryOf } from "@shared/catalog";
 import { trpc } from "@/lib/trpc";
@@ -26,16 +26,23 @@ export default function ListingForm({ id }: { id?: number }) {
   const [error, setError] = useState("");
   const support = useSupport();
 
+  // Se rellena al abrir; después, un refresco en vivo no pisa lo que se está escribiendo
+  const settled = useRef(false);
+  const filledWith = useRef<unknown>(null);
   useEffect(() => {
     const l = existing.data;
-    if (l) setF({
+    if (!l || settled.current) return;
+    if (!existing.isFetching) settled.current = true;
+    if (filledWith.current === l) return;
+    filledWith.current = l;
+    setF({
       category: l.category, deal: l.deal, title: l.title, description: l.description,
       // El precio guardado ya incluye el dólar para Cosland; aquí se muestra el del vendedor
       price: l.priceCents != null ? String((l.priceCents - (l.supportsApp ? 100 : 0)) / 100) : "", supportsApp: l.supportsApp,
       acceptsTrade: l.acceptsTrade, condition: l.condition ?? "usado", size: l.size ?? "", measurements: l.measurements ?? "",
       series: l.series ?? "", characterName: l.characterName ?? "", delivery: l.delivery, images: l.images,
     });
-  }, [existing.data]);
+  }, [existing.data, existing.isFetching]);
 
   const save = trpc.listing.save.useMutation({
     onSuccess: (r) => { utils.listing.invalidate(); toast(id ? "Cambios guardados" : "Publicado"); go(`/p/${r.id}`); },

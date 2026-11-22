@@ -12,7 +12,7 @@ import { createContext, userFromRequest } from "./trpc";
 import { db, runMigrations } from "./db";
 import { listings, shops, users } from "./schema";
 import { saveImage, UPLOAD_DIR, storageMode } from "./storage";
-import { subscribe } from "./realtime";
+import { subscribe, canSubscribe, liveStats } from "./realtime";
 import { formatPrice } from "../shared/catalog";
 
 const app = express();
@@ -37,7 +37,7 @@ if (corsOrigins.length) {
   });
 }
 
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
+app.get("/api/health", (_req, res) => res.json({ ok: true, live: liveStats().connections }));
 
 // Vínculo entre la web y la app Android (Digital Asset Links). Con las huellas correctas
 // en ANDROID_SHA256, la app abre a pantalla completa, sin barra de direcciones.
@@ -70,17 +70,19 @@ app.post("/api/upload", uploadLimiter, upload.single("file"), async (req, res) =
 });
 app.use("/uploads", express.static(UPLOAD_DIR, { maxAge: "365d", immutable: true }));
 
-// Canal en vivo para el chat: la conexión queda abierta y el servidor empuja los avisos
+// Canal en vivo: la conexión queda abierta y el servidor empuja avisos cortos.
+// Con cuenta llegan además los personales (chat, seguidores); sin cuenta, solo las novedades públicas.
 app.get("/api/events", async (req, res) => {
   const user = await userFromRequest(req);
-  if (!user) return res.status(401).end();
+  const ip = req.ip ?? "";
+  if (!canSubscribe(user?.id ?? null, ip)) return res.status(503).set("Retry-After", "60").end();
   res.writeHead(200, {
     "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no",
   });
-  res.write("retry: 3000\n\n");
-  const off = subscribe(user.id, res);
-  const beat = setInterval(() => res.write(": ping\n\n"), 25_000);
-  req.on("close", () => { clearInterval(beat); off(); });
+  // El reintento va con azar para que, tras un reinicio, no vuelvan todos a la vez
+  res.write(`retry: ${3000 + Math.floor(Math.random() * 5000)}\n\n`);
+  const off = subscribe(user?.id ?? null, ip, res);
+  req.on("close", off);
 });
 
 app.use("/api/trpc", express.json({ limit: "200kb" }), createExpressMiddleware({ router: appRouter, createContext }));

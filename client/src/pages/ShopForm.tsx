@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { ACCENTS, COUNTRIES, SHOP_KINDS, slugify } from "@shared/catalog";
 import { trpc } from "@/lib/trpc";
@@ -22,9 +22,15 @@ export default function ShopForm() {
   const [error, setError] = useState("");
   const isNew = !mine.data;
 
+  // Se rellena al abrir; después, un refresco en vivo no pisa lo que se está escribiendo
+  const settled = useRef(false);
+  const filledWith = useRef<unknown>(null);
   useEffect(() => {
-    if (mine.data) {
+    if (mine.data && !settled.current) {
       const s = mine.data;
+      if (!mine.isFetching) settled.current = true;
+      if (filledWith.current === s) return;
+      filledWith.current = s;
       setF({
         handle: s.handle, name: s.name, kind: s.kind, bio: s.bio ?? "", avatarUrl: s.avatarUrl, bannerUrl: s.bannerUrl, accent: s.accent,
         city: s.city ?? "", country: s.country ?? "Venezuela", whatsapp: s.whatsapp ?? "", instagram: s.instagram ?? "", tiktok: s.tiktok ?? "",
@@ -32,7 +38,7 @@ export default function ShopForm() {
       });
       setTouchedHandle(true);
     }
-  }, [mine.data]);
+  }, [mine.data, mine.isFetching]);
 
   const save = trpc.shop.save.useMutation({
     onSuccess: () => { utils.invalidate(); toast(isNew ? "Tu vitrina ya está abierta" : "Vitrina guardada"); go("/mi-vitrina"); },

@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { AppState } from "react-native";
 import { router, usePathname } from "expo-router";
 import EventSource from "react-native-sse";
+import { useQueryClient } from "@tanstack/react-query";
+import { createLive, retryDelay } from "@shared/live";
 import { API, authHeaders, getToken, loadToken, saveToken, trpc } from "./api";
 import { useToast } from "@/ui/core";
 
@@ -30,46 +32,90 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider value={{ ready, me: q.data ?? null, loading: !ready || q.isLoading, signIn, signOut }}>
-      <Realtime userId={q.data?.id ?? null} />
+      <Realtime userId={q.data?.id ?? null} ready={ready} />
       {children}
     </Ctx.Provider>
   );
 }
 
-// Chat en vivo: una conexión abierta con el servidor que avisa apenas llega un mensaje
-function Realtime({ userId }: { userId: number | null }) {
+// Canal en vivo: una sola conexión abierta con el servidor mientras la app está en primer plano.
+// Trae el chat y los seguidores al instante, y los avisos de qué cambió en vitrinas y publicaciones.
+const AWAY_MS = 20_000; // si la app estuvo en segundo plano más que esto, al volver se pone al día
+type LiveEvent = "chat" | "follow" | "sync" | "me" | "bye";
+
+function Realtime({ userId, ready }: { userId: number | null; ready: boolean }) {
   const utils = trpc.useUtils();
+  const qc = useQueryClient();
   const toast = useToast();
   const path = usePathname();
   useEffect(() => { currentPath = path; }, [path]);
 
   useEffect(() => {
-    if (!userId || !getToken()) return;
-    const refresh = (id?: number) => {
+    if (!ready) return;
+    const live = createLive(qc);
+    let es: EventSource<LiveEvent> | null = null;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false, attempts = 0, opened = false, awayAt = 0;
+    const refreshChat = (id?: number) => {
+      if (!userId) return;
       utils.chat.list.invalidate();
       utils.auth.me.invalidate();
       if (id) utils.chat.thread.invalidate({ id }); else utils.chat.thread.invalidate();
     };
-    const es = new EventSource<"chat" | "follow">(`${API}/api/events`, { headers: authHeaders(), pollingInterval: 4000, timeout: 0 });
-    let first = true;
-    es.addEventListener("open", () => { if (!first) refresh(); first = false; });
-    es.addEventListener("chat", (e) => {
-      if (!e.data) return;
-      const m = JSON.parse(e.data) as { conversationId: number; from: number; fromName: string };
-      refresh(m.conversationId);
-      if (m.from !== userId && currentPath !== `/mensajes/${m.conversationId}`) toast(`Nuevo mensaje de ${m.fromName}`);
+    const close = () => { clearTimeout(retry); if (es) { es.removeAllEventListeners(); es.close(); es = null; } };
+    const connect = () => {
+      if (stopped || AppState.currentState !== "active") return;
+      close();
+      const src = (es = new EventSource<LiveEvent>(`${API}/api/events`, { headers: authHeaders(), pollingInterval: 5000, timeout: 0 }));
+      src.addEventListener("open", () => {
+        attempts = 0;
+        if (opened) { refreshChat(); live.catchUp(); } // al reconectar, se pone al día
+        opened = true;
+      });
+      src.addEventListener("sync", (e) => {
+        try { if (e.data) live.push(JSON.parse(e.data) as string[]); } catch { /* aviso ilegible */ }
+      });
+      src.addEventListener("me", () => live.push(["me"]));
+      src.addEventListener("chat", (e) => {
+        if (!e.data) return;
+        const m = JSON.parse(e.data) as { conversationId: number; from: number; fromName: string };
+        refreshChat(m.conversationId);
+        if (m.from !== userId && currentPath !== `/mensajes/${m.conversationId}`) toast(`Nuevo mensaje de ${m.fromName}`);
+      });
+      src.addEventListener("follow", (e) => {
+        if (!e.data) return;
+        const m = JSON.parse(e.data) as { name: string };
+        utils.auth.me.invalidate();
+        toast(`${m.name} empezó a seguir tu vitrina`);
+      });
+      // El servidor cerró esta conexión por haber demasiadas de la misma cuenta: vuelve al reabrir la app
+      src.addEventListener("bye", () => { if (es === src) close(); });
+      src.addEventListener("error", () => {
+        // Se cierra en el siguiente turno (la librería programa su propio reintento justo después de avisar)
+        setTimeout(() => {
+          if (es !== src || stopped) return;
+          close();
+          retry = setTimeout(connect, retryDelay(attempts++));
+        }, 0);
+      });
+    };
+    connect();
+    const sub = AppState.addEventListener("change", (st) => {
+      if (st !== "active") {
+        if (!awayAt) awayAt = Date.now();
+        live.setVisible(false);
+        close(); // en segundo plano no se gasta batería ni conexión
+        return;
+      }
+      live.setVisible(true);
+      const away = awayAt ? Date.now() - awayAt : 0;
+      awayAt = 0;
+      refreshChat();
+      if (away > AWAY_MS) live.catchUp();
+      if (!es) { attempts = 0; connect(); }
     });
-    es.addEventListener("follow", (e) => {
-      if (!e.data) return;
-      const m = JSON.parse(e.data) as { name: string };
-      utils.shop.invalidate();
-      utils.auth.me.invalidate();
-      toast(`${m.name} empezó a seguir tu vitrina`);
-    });
-    // Al volver a la app se pone al día por si la conexión estuvo en pausa
-    const sub = AppState.addEventListener("change", (st) => { if (st === "active") refresh(); });
-    return () => { es.removeAllEventListeners(); es.close(); sub.remove(); };
-  }, [userId, utils, toast]);
+    return () => { stopped = true; close(); live.stop(); sub.remove(); };
+  }, [userId, ready, qc, utils, toast]);
   return null;
 }
 let currentPath = "/";

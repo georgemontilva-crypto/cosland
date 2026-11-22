@@ -4,7 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { and, or, eq, ne, like, desc, asc, sql, inArray, gte, lte, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/mysql-core";
 import { db } from "./db";
-import { publish } from "./realtime";
+import { publish, touch, T } from "./realtime";
 import { deleteImages } from "./storage";
 import {
   users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports, contributions, settings,
@@ -17,6 +17,17 @@ import {
 } from "../shared/catalog";
 
 const fail = (code: TRPCError["code"], message: string) => new TRPCError({ code, message });
+
+// Cuenta una vista por persona y publicación cada media hora (en memoria, con tope de tamaño)
+const seen = new Map<string, number>();
+const VIEW_WINDOW = 30 * 60 * 1000;
+function firstView(who: string, listingId: number) {
+  const key = `${who}:${listingId}`, now = Date.now(), last = seen.get(key);
+  if (last && now - last < VIEW_WINDOW) return false;
+  if (seen.size > 50_000) for (const [k, t] of seen) { if (now - t > VIEW_WINDOW || seen.size > 40_000) seen.delete(k); else break; }
+  seen.delete(key); seen.set(key, now); // se reinserta para mantener el orden por antigüedad
+  return true;
+}
 const imageUrl = z.string().max(500).refine((u) => u.startsWith("/uploads/") || u.startsWith("https://") || u.startsWith("/demo/"), "Imagen no válida");
 const optText = (max: number) => z.string().trim().max(max).optional().nullable().transform((v) => (v ? v : null));
 const dollars = z.number().min(0).max(1_000_000).optional().nullable();
@@ -98,6 +109,7 @@ const authRouter = router({
         role: admin ? "admin" : "user",
       });
       const token = signSession(ctx.res, r.insertId);
+      touch(T.admin);
       return { ok: true, token: wantsToken(ctx.req) ? token : null };
     }),
 
@@ -160,6 +172,7 @@ const authRouter = router({
     await db.delete(users).where(eq(users.id, u.id));
     await deleteImages(photos);
     ctx.res.clearCookie(COOKIE, { path: "/" });
+    touch(T.feed, T.shops, T.wanted, T.admin, shop && T.shop(shop.id));
     return { ok: true };
   }),
 });
@@ -196,8 +209,11 @@ const shopRouter = router({
       instagram: input.instagram?.replace(/^@/, "") || null,
       tiktok: input.tiktok?.replace(/^@/, "") || null,
     };
+    let shopId = mine?.id;
     if (mine) await db.update(shops).set(data).where(eq(shops.id, mine.id));
-    else await db.insert(shops).values({ ...data, userId: ctx.user.id });
+    else shopId = (await db.insert(shops).values({ ...data, userId: ctx.user.id }))[0].insertId;
+    // Nombre, foto y color de la vitrina salen también en sus publicaciones
+    touch(T.shop(shopId!), T.shops, T.feed, !mine && T.admin);
     return { handle: input.handle };
   }),
 
@@ -244,6 +260,7 @@ const shopRouter = router({
       const mine = await shopOf(ctx.user.id);
       publish([shop.userId], "follow", { shopId: shop.id, name: mine?.name ?? ctx.user.name.split(" ")[0] });
     }
+    touch(T.shop(shop.id)); // el contador cambia para quien esté mirando esa vitrina
     return { following: !f };
   }),
 
@@ -364,7 +381,9 @@ const listingRouter = router({
     if (!row || (row.listing.status === "removed" && !isMine && ctx.user?.role !== "admin")) {
       throw fail("NOT_FOUND", "Esta publicación ya no está disponible.");
     }
-    if (!isMine) await db.update(listings).set({ views: sql`${listings.views} + 1`, updatedAt: row.listing.updatedAt }).where(eq(listings.id, input.id));
+    if (!isMine && firstView(ctx.user ? `u${ctx.user.id}` : `i${ctx.req.ip}`, input.id)) {
+      await db.update(listings).set({ views: sql`${listings.views} + 1`, updatedAt: row.listing.updatedAt }).where(eq(listings.id, input.id));
+    }
     let isFavorite = false;
     if (ctx.user) {
       const [f] = await db.select().from(favorites).where(and(eq(favorites.userId, ctx.user.id), eq(favorites.listingId, input.id))).limit(1);
@@ -402,9 +421,11 @@ const listingRouter = router({
       const [own] = await db.select({ id: listings.id }).from(listings).where(and(eq(listings.id, id), eq(listings.shopId, shop.id))).limit(1);
       if (!own) throw fail("NOT_FOUND", "No encontramos esa publicación en tu vitrina.");
       await db.update(listings).set(data).where(eq(listings.id, id));
+      touch(T.listing(id), T.shop(shop.id), T.feed);
       return { id };
     }
     const [r] = await db.insert(listings).values({ ...data, shopId: shop.id });
+    touch(T.shop(shop.id), T.feed, T.admin);
     return { id: r.insertId };
   }),
 
@@ -430,6 +451,7 @@ const listingRouter = router({
       } else if (input.status !== "sold" && open?.status === "pending") {
         await db.delete(contributions).where(eq(contributions.id, open.id)); // se arrepintió de marcarla vendida
       }
+      touch(T.listing(l.id), T.shop(shop.id), T.feed);
       return { ok: true, contributionId };
     }),
 
@@ -589,6 +611,7 @@ const reviewRouter = router({
       }
       await db.insert(reviews).values({ shopId: input.shopId, authorId: ctx.user.id, rating: input.rating, comment: input.comment })
         .onDuplicateKeyUpdate({ set: { rating: input.rating, comment: input.comment } });
+      touch(T.shop(input.shopId), T.shops);
       return { ok: true };
     }),
 });
@@ -615,11 +638,13 @@ const wantedRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { budget, ...rest } = input;
       const [r] = await db.insert(wanted).values({ ...rest, budgetCents: toCents(budget), userId: ctx.user.id });
+      touch(T.wanted);
       return { id: r.insertId };
     }),
 
   close: authedProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
     await db.update(wanted).set({ status: "closed" }).where(and(eq(wanted.id, input.id), eq(wanted.userId, ctx.user.id)));
+    touch(T.wanted);
     return { ok: true };
   }),
 });
@@ -659,6 +684,7 @@ const supportRouter = router({
       if (!c || c.status === "confirmed") throw fail("NOT_FOUND", "No encontramos ese aporte pendiente.");
       await db.update(contributions).set({ status: "reported", reference: input.reference, proofUrl: input.proofUrl ?? null, reportedAt: new Date() })
         .where(eq(contributions.id, c.id));
+      touch(T.admin);
       return { ok: true };
     }),
 
@@ -679,6 +705,7 @@ const reportRouter = router({
     .input(z.object({ listingId: z.number().int(), reason: z.enum(REPORT_REASONS), detail: optText(1000) }))
     .mutation(async ({ ctx, input }) => {
       await db.insert(reports).values({ ...input, reporterId: ctx.user.id });
+      touch(T.admin);
       return { ok: true };
     }),
 });
@@ -708,6 +735,10 @@ const adminRouter = router({
       if (input.status) set.status = input.status;
       if (input.featured != null) set.featured = input.featured;
       if (Object.keys(set).length) await db.update(listings).set(set).where(eq(listings.id, input.id));
+      const [own] = await db.select({ shopId: shops.id, userId: shops.userId }).from(listings)
+        .innerJoin(shops, eq(shops.id, listings.shopId)).where(eq(listings.id, input.id)).limit(1);
+      touch(T.listing(input.id), T.feed, T.admin, own && T.shop(own.shopId));
+      if (own) publish([own.userId], "me", {});
       return { ok: true };
     }),
 
@@ -719,6 +750,9 @@ const adminRouter = router({
 
   setVerified: adminProcedure.input(z.object({ shopId: z.number().int(), verified: z.boolean() })).mutation(async ({ input }) => {
     await db.update(shops).set({ verified: input.verified }).where(eq(shops.id, input.shopId));
+    const [own] = await db.select({ userId: shops.userId }).from(shops).where(eq(shops.id, input.shopId)).limit(1);
+    touch(T.shop(input.shopId), T.shops, T.feed, T.admin);
+    if (own) publish([own.userId], "me", {});
     return { ok: true };
   }),
 
@@ -733,7 +767,10 @@ const adminRouter = router({
       // Al suspender una cuenta, sus publicaciones salen de la tienda
       const mine = await db.select({ id: shops.id }).from(shops).where(eq(shops.userId, input.userId));
       if (mine.length) await db.update(listings).set({ status: "removed" }).where(inArray(listings.shopId, mine.map((s) => s.id)));
+      touch(T.feed, T.shops, ...mine.map((s) => T.shop(s.id)));
     }
+    touch(T.admin);
+    publish([input.userId], "me", {});
     return { ok: true };
   }),
 
@@ -746,6 +783,7 @@ const adminRouter = router({
 
   resolveReport: adminProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
     await db.update(reports).set({ status: "resolved" }).where(eq(reports.id, input.id));
+    touch(T.admin);
     return { ok: true };
   }),
 
@@ -759,6 +797,7 @@ const adminRouter = router({
       await setSetting("support_enabled", input.enabled ? "1" : "0");
       await setSetting("support_account", input.account);
       await setSetting("support_goal_cents", String(Math.round(input.goal * 100)));
+      touch(T.support, T.admin);
       return { ok: true };
     }),
 
@@ -777,6 +816,10 @@ const adminRouter = router({
     .mutation(async ({ input }) => {
       await db.update(contributions).set({ status: input.status, confirmedAt: input.status === "confirmed" ? new Date() : null })
         .where(eq(contributions.id, input.id));
+      const [own] = await db.select({ shopId: shops.id, userId: shops.userId }).from(contributions)
+        .innerJoin(shops, eq(shops.id, contributions.shopId)).where(eq(contributions.id, input.id)).limit(1);
+      touch(T.support, T.admin, own && T.shop(own.shopId));
+      if (own) publish([own.userId], "me", {});
       return { ok: true };
     }),
 });
