@@ -54,7 +54,8 @@ const shopStats = {
   followers: n(sql`(select count(*) from follows f where f.shop_id = shops.id)`),
   rating: n(sql`(select coalesce(avg(r.rating), 0) from reviews r where r.shop_id = shops.id)`),
   reviewCount: n(sql`(select count(*) from reviews r where r.shop_id = shops.id)`),
-  supporter: n(sql`(select count(*) from contributions c where c.shop_id = shops.id and c.status = 'confirmed')`),
+  // Apoya a Cosland: tiene algún aporte confirmado o el administrador le dio la insignia
+  supporter: n(sql`((select count(*) from contributions c where c.shop_id = shops.id and c.status = 'confirmed') + shops.support_badge)`),
 };
 
 /* ───────── Aportes: 1 dólar voluntario por venta ───────── */
@@ -909,7 +910,7 @@ const adminRouter = router({
 
   shops: adminProcedure.query(() =>
     db.select({
-      id: shops.id, handle: shops.handle, name: shops.name, kind: shops.kind, city: shops.city, verified: shops.verified,
+      id: shops.id, handle: shops.handle, name: shops.name, kind: shops.kind, city: shops.city, verified: shops.verified, supportBadge: shops.supportBadge,
       userId: users.id, email: users.email, banned: users.banned, ...shopStats,
     }).from(shops).innerJoin(users, eq(users.id, shops.userId)).orderBy(desc(shops.id)).limit(300)),
 
@@ -918,6 +919,13 @@ const adminRouter = router({
     const [own] = await db.select({ userId: shops.userId }).from(shops).where(eq(shops.id, input.shopId)).limit(1);
     touch(T.shop(input.shopId), T.shops, T.feed, T.admin);
     if (own) publish([own.userId], "me", {});
+    return { ok: true };
+  }),
+
+  // Dar o quitar a mano la insignia "Apoya a Cosland"
+  setSupportBadge: adminProcedure.input(z.object({ shopId: z.number().int(), on: z.boolean() })).mutation(async ({ input }) => {
+    await db.update(shops).set({ supportBadge: input.on }).where(eq(shops.id, input.shopId));
+    touch(T.shop(input.shopId), T.shops, T.feed, T.admin);
     return { ok: true };
   }),
 

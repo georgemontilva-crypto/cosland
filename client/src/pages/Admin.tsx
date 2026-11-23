@@ -31,6 +31,7 @@ export default function Admin() {
   const setContribution = trpc.admin.setContribution.useMutation({ onSuccess: done });
   const setListing = trpc.admin.setListing.useMutation({ onSuccess: done });
   const setVerified = trpc.admin.setVerified.useMutation({ onSuccess: done });
+  const setBadge = trpc.admin.setSupportBadge.useMutation({ onSuccess: done });
   const setBanned = trpc.admin.setBanned.useMutation({ onSuccess: done, onError: (e) => toast(e.message, true) });
   const resolve = trpc.admin.resolveReport.useMutation({ onSuccess: done });
 
@@ -95,6 +96,7 @@ export default function Admin() {
                 <Link href={`/v/${s.handle}`} className="font-extrabold underline underline-offset-2">{s.name}</Link>
                 <p className="text-sm text-cocoa break-all">{shopKindLabel(s.kind)}{s.city ? `, ${s.city}` : ""}. {s.listingCount} publicaciones. {s.email}</p>
               </div>
+              <button className={`btn btn-sm ${s.supportBadge ? "btn-matcha" : ""}`} aria-pressed={s.supportBadge} onClick={() => setBadge.mutate({ shopId: s.id, on: !s.supportBadge })}>{s.supportBadge ? "Con insignia de apoyo" : "Dar insignia de apoyo"}</button>
               <button className={`btn btn-sm ${s.verified ? "btn-matcha" : ""}`} onClick={() => setVerified.mutate({ shopId: s.id, verified: !s.verified })}>{s.verified ? "Verificada" : "Verificar"}</button>
             </li>
           ))}

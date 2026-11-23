@@ -44,6 +44,8 @@ export const shops = mysqlTable("shops", {
   address: varchar("address", { length: 255 }),
   hours: varchar("hours", { length: 255 }),
   verified: boolean("verified").notNull().default(false),
+  // Insignia "Apoya a Cosland" otorgada a mano desde administración (además de la que se gana con aportes confirmados)
+  supportBadge: boolean("support_badge").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("shops_handle_idx").on(t.handle), uniqueIndex("shops_user_idx").on(t.userId)]);
 
