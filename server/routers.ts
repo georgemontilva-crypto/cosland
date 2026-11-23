@@ -16,6 +16,7 @@ import {
 import {
   ACCENT_IDS, CATEGORY_IDS, CONDITION_IDS, DEAL_IDS, DELIVERY_IDS, SHOP_KIND_IDS, REPORT_REASONS, categoryOf, hasStock,
   PAY_TYPE_IDS, PAY_ON_DELIVERY, payTypeLabel,
+  CATEGORIES,
 } from "../shared/catalog";
 
 const fail = (code: TRPCError["code"], message: string) => new TRPCError({ code, message });
@@ -359,6 +360,50 @@ const listingInput = z.object({
 const PAGE = 24;
 
 const listingRouter = router({
+  // Sugerencias mientras se escribe: salen desde la primera letra, con palabras a medias
+  suggest: publicProcedure.input(z.object({ q: z.string().max(60) })).query(async ({ input }) => {
+    const ws = words(input.q);
+    const empty = { terms: [] as { text: string; kind: "serie" | "personaje"; count: number }[], categories: [] as { id: string; label: string; kind: string }[], shops: [] as { handle: string; name: string; avatarUrl: string | null; accent: string; verified: boolean; city: string | null }[], items: [] as { id: number; title: string; priceCents: number | null; deal: string; image: string | null; shopName: string; shopAccent: string }[] };
+    if (!ws.length) return empty;
+    const key = ws.join(" ").toLowerCase();
+    const hit = suggestCache.get(key);
+    if (hit && hit.until > Date.now()) return hit.data as typeof empty;
+
+    const phrase = ws.join(" "), start = `${phrase}%`;
+    const active = eq(listings.status, "active");
+    // Con una o dos letras solo cuenta el comienzo de una palabra ("n" trae Nezuko y Naruto, no todo lo que lleve una n);
+    // con tres o más, también lo que la contenga en medio
+    const has = (col: Parameters<typeof like>[0], text: string) => (text.length < 3 ? or(like(col, `${text}%`), like(col, `% ${text}%`))! : like(col, `%${text}%`));
+    const term = async (col: typeof listings.series | typeof listings.characterName, kind: "serie" | "personaje") => {
+      const rows = await db.select({ text: sql<string>`min(${col})`, count: n(sql`count(*)`) }).from(listings)
+        .where(and(active, has(col, phrase))).groupBy(sql`lower(trim(${col}))`)
+        .orderBy(desc(sql`max(${col} like ${start})`), desc(sql`count(*)`)).limit(4);
+      return rows.filter((r) => r.text?.trim()).map((r) => ({ text: r.text.trim(), kind, count: r.count }));
+    };
+    const [series, characters, shopRows, itemRows] = await Promise.all([
+      term(listings.series, "serie"),
+      term(listings.characterName, "personaje"),
+      db.select({ handle: shops.handle, name: shops.name, avatarUrl: shops.avatarUrl, accent: shops.accent, verified: shops.verified, city: shops.city }).from(shops)
+        .where(or(has(shops.name, phrase), like(shops.handle, start))).orderBy(desc(sql`${shops.name} like ${start}`), desc(shops.verified), asc(shops.name)).limit(3),
+      db.select({ id: listings.id, title: listings.title, priceCents: listings.priceCents, deal: listings.deal, images: listings.images, shopName: shops.name, shopAccent: shops.accent })
+        .from(listings).innerJoin(shops, eq(shops.id, listings.shopId))
+        .where(and(active, ...ws.map((w) => or(has(listings.title, w), has(listings.series, w), has(listings.characterName, w))!)))
+        .orderBy(desc(sql`${listings.title} like ${start}`), desc(listings.featured), desc(listings.id)).limit(5),
+    ]);
+    // Series y personajes juntos, sin repetir el mismo texto, primero los que empiezan por lo escrito
+    const seen = new Set<string>();
+    const terms = [...characters, ...series].filter((t) => { const k = t.text.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+      .sort((a, b) => Number(plain(b.text).startsWith(plain(key))) - Number(plain(a.text).startsWith(plain(key))) || b.count - a.count).slice(0, 5);
+    const categories = CATEGORIES.filter((c) => ws.every((w) => plain(`${c.label} ${c.short}`).split(/\s+/).some((part) => part.startsWith(plain(w))))).slice(0, 2).map((c) => ({ id: c.id as string, label: c.label as string, kind: c.kind as string }));
+    const data: typeof empty = {
+      terms, categories, shops: shopRows,
+      items: itemRows.map(({ images, ...i }) => ({ ...i, image: images?.[0] ?? null })),
+    };
+    if (suggestCache.size > 400) suggestCache.clear();
+    suggestCache.set(key, { until: Date.now() + 20_000, data });
+    return data;
+  }),
+
   search: publicProcedure
     .input(z.object({
       q: z.string().max(80).optional(),
@@ -388,8 +433,9 @@ const listingRouter = router({
       if (input.trade) where.push(eq(listings.acceptsTrade, true));
       if (input.shopId) where.push(eq(listings.shopId, input.shopId));
       if (input.city?.trim()) where.push(like(shops.city, `%${input.city.trim()}%`));
-      if (input.q?.trim()) {
-        const q = `%${input.q.trim()}%`;
+      // Cada palabra tiene que aparecer en algún lado (título, serie, personaje, descripción o vitrina), aunque esté incompleta
+      for (const w of words(input.q)) {
+        const q = `%${w}%`;
         where.push(or(like(listings.title, q), like(listings.series, q), like(listings.characterName, q), like(listings.description, q), like(shops.name, q))!);
       }
       const page = input.cursor ?? input.page ?? 1;
@@ -575,6 +621,11 @@ const listingRouter = router({
       .orderBy(desc(favorites.createdAt))),
 });
 
+// Palabras de una búsqueda, listas para LIKE (los comodines que escriba la persona cuentan como texto)
+const words = (q?: string | null) => (q ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 6).map((w) => w.replace(/[\\%_]/g, "\\$&"));
+// Sin tildes ni mayúsculas, para comparar con lo que escribe la gente
+const plain = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const suggestCache = new Map<string, { until: number; data: unknown }>();
 const savedOnce = new Set<string>(); // favoritos ya avisados (en memoria; se reinicia con el servidor)
 
 /* ───────── Mensajes ───────── */

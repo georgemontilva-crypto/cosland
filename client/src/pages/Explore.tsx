@@ -4,6 +4,7 @@ import { SlidersHorizontal, X } from "lucide-react";
 import { CATEGORIES, CONDITIONS, DEALS, SIZES } from "@shared/catalog";
 import { trpc } from "@/lib/trpc";
 import { Empty, Field, Loading, Modal } from "@/components/ui";
+import SearchField from "@/components/SearchField";
 import { ListingGrid } from "@/components/cards";
 
 type Filters = Record<string, string>;
@@ -94,10 +95,8 @@ export default function Explore() {
   return (
     <div className="wrap pt-6 md:pt-10">
       <h1 className="text-3xl md:text-5xl">{f.q ? `Resultados para "${f.q}"` : "Explorar"}</h1>
-      <form className="mt-5 flex gap-2 md:hidden" onSubmit={(e) => { e.preventDefault(); set({ q }); }} role="search">
-        <input className="input !rounded-full" placeholder="Busca un personaje, serie o artículo" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar" />
-        <button className="btn btn-ink">Buscar</button>
-      </form>
+      <SearchField button className="mt-5 md:hidden" value={q} onChange={setQ} onSubmit={(text) => set({ q: text })}
+        placeholder="Busca un personaje, serie o artículo" label="Buscar" />
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
         {kindTab("", "Todo")}

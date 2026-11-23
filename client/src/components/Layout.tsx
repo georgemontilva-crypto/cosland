@@ -1,10 +1,12 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { flushSync } from "react-dom";
 import { Link, useLocation } from "wouter";
-import { Compass, Heart, Home as HomeIcon, LogOut, MessageCircle, Plus, Search, Shield, ShoppingBag, Store, User, Volume2, VolumeX, BellRing, BellOff } from "lucide-react";
+import { Compass, Heart, Home as HomeIcon, LogOut, MessageCircle, Plus, Search, Shield, ShoppingBag, Store, User, Volume2, VolumeX, BellRing, BellOff, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useMe, useRealtime } from "@/lib/hooks";
 import { previewSound, setSoundOn, soundOn } from "@/lib/sound";
 import InstallHint from "./InstallHint";
+import SearchField from "./SearchField";
 import { currentSubscription, usePush, usePushSync } from "@/lib/push";
 import { Avatar, useToast } from "./ui";
 
@@ -37,15 +39,13 @@ function PushToggle() {
   );
 }
 
-function SearchBox({ className = "" }: { className?: string }) {
+function SearchBox({ className = "", inputRef, onDone }: { className?: string; inputRef?: RefObject<HTMLInputElement>; onDone?: () => void }) {
   const [, go] = useLocation();
   const [q, setQ] = useState("");
-  const submit = (e: FormEvent) => { e.preventDefault(); go(`/explorar${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`); };
   return (
-    <form onSubmit={submit} role="search" className={`relative ${className}`}>
-      <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-cocoa pointer-events-none" />
-      <input className="input !rounded-full !pl-11" placeholder="Busca un personaje, serie o artículo" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar en Cosland" />
-    </form>
+    <SearchField className={className} value={q} onChange={setQ} inputRef={inputRef} onLeave={() => { setQ(""); onDone?.(); }}
+      onSubmit={(text) => { onDone?.(); go(`/explorar${text ? `?q=${encodeURIComponent(text)}` : ""}`); }}
+      placeholder="Busca un personaje, serie o artículo" label="Buscar en Cosland" />
   );
 }
 
@@ -89,6 +89,15 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [path] = useLocation();
   const { me } = useMe();
   const inChat = path.startsWith("/mensajes/");
+  // El foco se pone dentro del mismo toque para que el teléfono abra el teclado
+  const [searching, setSearching] = useState(false);
+  const searchInput = useRef<HTMLInputElement>(null);
+  useEffect(() => setSearching(false), [path]); // al cambiar de pantalla se recoge
+  const toggleSearch = () => {
+    if (searching) return setSearching(false);
+    flushSync(() => setSearching(true));
+    searchInput.current?.focus();
+  };
   useRealtime(me?.id ?? null);
   usePushSync(me);
   const navLink = (href: string, label: string) => (
@@ -117,7 +126,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           </nav>
           <SearchBox className="hidden md:block flex-1 max-w-md ml-auto" />
           <div className="flex items-center gap-0.5 min-[360px]:gap-1.5 ml-auto md:ml-0 shrink-0">
-            <Link href="/explorar" className="md:hidden btn btn-ghost btn-sm !px-2.5" aria-label="Buscar"><Search size={21} /></Link>
+            <button className="md:hidden btn btn-ghost btn-sm !px-2.5" aria-label={searching ? "Cerrar el buscador" : "Buscar"} aria-expanded={searching} onClick={toggleSearch}>{searching ? <X size={21} /> : <Search size={21} />}</button>
             <Link href="/favoritos" className="btn btn-ghost btn-sm !px-2.5" aria-label="Favoritos"><Heart size={21} /></Link>
             <Link href="/mensajes" className="hidden md:inline-flex btn btn-ghost btn-sm !px-2.5 relative" aria-label={`Mensajes${me?.unread ? `, ${me.unread} sin leer` : ""}`}>
               <MessageCircle size={21} />
@@ -127,6 +136,8 @@ export default function Layout({ children }: { children: ReactNode }) {
             <AccountMenu />
           </div>
         </div>
+        {/* En teléfono: el buscador se abre bajo la cabecera, con el teclado listo */}
+        {searching && <div className="md:hidden wrap pb-3"><SearchBox inputRef={searchInput} onDone={() => setSearching(false)} /></div>}
       </header>
 
       <main id="contenido" className="flex-1">{children}</main>

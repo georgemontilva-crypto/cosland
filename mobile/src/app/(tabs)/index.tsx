@@ -7,6 +7,7 @@ import { CATEGORIES, categoryOf, formatPrice } from "@shared/catalog";
 import { getFlag, setFlag, timeAgo, trpc } from "@/lib/api";
 import { BORDER, C, NOTE, accentHex } from "@/lib/theme";
 import { Awning, Btn, H2, IconBtn, Input, Loading, Logo, T, panel } from "@/ui/core";
+import SearchField from "@/ui/SearchField";
 import { Grid, PAD, ShopCard } from "@/ui/cards";
 
 const WELCOME_KEY = "cosland_bienvenida";
@@ -36,7 +37,6 @@ export default function Home() {
   // La bienvenida es una tarjeta que se puede cerrar; el teléfono recuerda que ya se cerró
   const [welcome, setWelcome] = useState(() => getFlag(WELCOME_KEY) !== "0");
   const closeWelcome = () => { setWelcome(false); setFlag(WELCOME_KEY, "0"); };
-  const search = () => router.push({ pathname: "/explorar", params: q.trim() ? { q: q.trim() } : {} });
 
   return (
     <View style={{ flex: 1, backgroundColor: C.cream, paddingTop: insets.top }}>
@@ -56,14 +56,8 @@ export default function Home() {
               </View>
             </View>
           ) : null}
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <View style={{ flex: 1, justifyContent: "center" }}>
-              <Input value={q} onChangeText={setQ} placeholder="Nezuko talla M, peluca rubia" returnKeyType="search" onSubmitEditing={search} accessibilityLabel="¿Qué buscas?"
-                style={{ borderRadius: 999, paddingLeft: 44, borderColor: C.ink, minHeight: 52 }} />
-              <View pointerEvents="none" style={{ position: "absolute", left: 16 }}><Search size={19} color={C.cocoa} /></View>
-            </View>
-            <Btn label="Buscar" kind="ink" onPress={search} style={{ minHeight: 52 }} />
-          </View>
+          <SearchField big value={q} onChange={setQ} placeholder="Nezuko talla M, peluca rubia" label="¿Qué buscas?"
+            onSubmit={(text) => router.push({ pathname: "/explorar", params: text ? { q: text } : {} })} />
         </View>
 
         {/* La calle: una fachada por cada tipo de vitrina */}

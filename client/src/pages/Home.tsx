@@ -6,6 +6,7 @@ import { trpc, timeAgo } from "@/lib/trpc";
 import { Awning, Loading } from "@/components/ui";
 import { CategoryBubble, ListingGrid, ShopCard } from "@/components/cards";
 import PushCard from "@/components/PushCard";
+import SearchField from "@/components/SearchField";
 import { SupportMeter } from "@/components/Support";
 
 const WELCOME_KEY = "cosland_bienvenida";
@@ -35,7 +36,6 @@ export default function Home() {
   // La bienvenida es una tarjeta que se puede cerrar; el navegador recuerda que ya se cerró
   const [welcome, setWelcome] = useState(() => { try { return localStorage.getItem(WELCOME_KEY) !== "0"; } catch { return true; } });
   const closeWelcome = () => { setWelcome(false); try { localStorage.setItem(WELCOME_KEY, "0"); } catch { /* sin almacenamiento: se cierra solo por esta visita */ } };
-  const submit = (e: FormEvent) => { e.preventDefault(); go(`/explorar${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`); };
 
   return (
     <>
@@ -55,16 +55,9 @@ export default function Home() {
             </p>
           </div>
         ) : <h1 className="sr-only">Cosland: compra y vende cosplay, figuras y más</h1>}
-        <form onSubmit={submit} role="search" className={`${welcome ? "mt-4 md:mt-6" : ""} flex gap-2 max-w-2xl`}>
-          <div className="relative flex-1">
-            <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-cocoa pointer-events-none" />
-            <input
-              className="input !rounded-full !pl-12 !min-h-14 !text-[1.05rem] !border-ink" value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder="Nezuko talla M, peluca rubia, figura de Gojo" aria-label="¿Qué buscas?"
-            />
-          </div>
-          <button className="btn btn-ink !min-h-14 !px-6">Buscar</button>
-        </form>
+        <SearchField big button className={`${welcome ? "mt-4 md:mt-6" : ""} max-w-2xl`} value={q} onChange={setQ}
+          onSubmit={(text) => go(`/explorar${text ? `?q=${encodeURIComponent(text)}` : ""}`)}
+          placeholder="Nezuko talla M, peluca rubia, figura de Gojo" label="¿Qué buscas?" />
       </section>
 
       {/* La calle: una fachada por cada tipo de vitrina */}

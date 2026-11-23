@@ -7,6 +7,7 @@ import { CATEGORIES, CONDITIONS, DEALS, SIZES } from "@shared/catalog";
 import { trpc } from "@/lib/api";
 import { C } from "@/lib/theme";
 import { Btn, Check2, Chip, Empty, Field, H1, Input, Loading, Select, Sheet, T } from "@/ui/core";
+import SearchField from "@/ui/SearchField";
 import { ListingCard, PAD, useCardWidth } from "@/ui/cards";
 
 type Filters = { q: string; kind: string; category: string; deal: string; condition: string; size: string; min: string; max: string; city: string; trade: boolean; sort: string };
@@ -30,6 +31,11 @@ export default function Explore() {
   }, [params.q, params.kind, params.category]);
 
   const set = (patch: Partial<Filters>) => setF((p) => ({ ...p, ...patch }));
+  // Los resultados se van actualizando mientras se escribe, sin esperar a tocar "Buscar"
+  useEffect(() => {
+    const t = setTimeout(() => setF((p) => (p.q === text.trim() ? p : { ...p, q: text.trim() })), 350);
+    return () => clearTimeout(t);
+  }, [text]);
   const res = trpc.listing.search.useInfiniteQuery({
     q: f.q || undefined, category: f.category || undefined, kind: (f.kind || undefined) as "product" | "service" | undefined,
     deal: (f.deal || undefined) as never, condition: (f.condition || undefined) as never, size: f.size || undefined,
@@ -54,13 +60,7 @@ export default function Explore() {
         ListHeaderComponent={
           <View style={{ paddingHorizontal: PAD, paddingTop: 14, gap: 14 }}>
             <H1>{f.q ? `Resultados para “${f.q}”` : "Explorar"}</H1>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <View style={{ flex: 1, justifyContent: "center" }}>
-                <Input value={text} onChangeText={setText} placeholder="Personaje, serie o artículo" returnKeyType="search" onSubmitEditing={() => set({ q: text.trim() })} accessibilityLabel="Buscar" style={{ borderRadius: 999, paddingLeft: 44 }} />
-                <View pointerEvents="none" style={{ position: "absolute", left: 16 }}><Search size={18} color={C.cocoa} /></View>
-              </View>
-              <Btn label="Buscar" kind="ink" onPress={() => set({ q: text.trim() })} />
-            </View>
+            <SearchField value={text} onChange={setText} placeholder="Personaje, serie o artículo" label="Buscar" onSubmit={(q) => set({ q })} />
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               <Chip label="Todo" on={!f.kind} onPress={() => set({ kind: "", category: "" })} />
               <Chip label="Artículos" on={f.kind === "product"} onPress={() => set({ kind: "product", category: "" })} />
