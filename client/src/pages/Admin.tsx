@@ -32,7 +32,15 @@ export default function Admin() {
   const resolve = trpc.admin.resolveReport.useMutation({ onSuccess: done });
 
   if (loading) return <Loading />;
-  if (!isAdmin) return <div className="wrap py-14"><Empty title="Solo para administradores" action={<Link href="/" className="btn btn-ink">Volver al inicio</Link>} /></div>;
+  if (!isAdmin) return (
+    <div className="wrap py-14">
+      <Empty title="Solo para administradores" action={me ? <Link href="/" className="btn btn-ink">Volver al inicio</Link> : <Link href="/entrar?volver=/admin" className="btn btn-ink">Entrar a mi cuenta</Link>}>
+        {me
+          ? <>Entraste como <b className="break-all">{me.email}</b>, y esa cuenta no es de administración. La cuenta de administración es la del correo configurado para Cosland.</>
+          : "Entra con la cuenta de administración para ver este panel."}
+      </Empty>
+    </div>
+  );
   const o = overview.data;
   const tabs: [Tab, string][] = [["resumen", "Resumen"], ["publicaciones", "Publicaciones"], ["vitrinas", "Vitrinas"], ["usuarios", "Usuarios"], ["denuncias", `Denuncias${o?.openReports ? ` (${o.openReports})` : ""}`], ["aportes", `Aportes${o?.contributionsToVerify ? ` (${o.contributionsToVerify})` : ""}`]];
 
