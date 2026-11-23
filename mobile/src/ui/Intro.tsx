@@ -18,6 +18,7 @@ type Box = { x: number; y: number; w: number; h: number };
 // Voz de bienvenida. Respeta el modo silencio o vibración del teléfono y no corta la música que esté sonando.
 const VOICE = require("../../assets/sonido/bienvenida.mp3");
 export const SOUND_KEY = "cosland_sonido";
+const VOICE_MS = 3700 + 250; // lo que dura la voz, más el instante que tarda en arrancar
 export function playWelcome() {
   let player: ReturnType<typeof createAudioPlayer> | null = null;
   let stopped = false;
@@ -32,7 +33,7 @@ export function playWelcome() {
       } catch { /* sin audio: la entrada sigue en silencio */ }
     });
   const free = setTimeout(() => { try { player?.remove(); } catch { /* ya liberado */ } player = null; }, 8000);
-  return () => { stopped = true; clearTimeout(free); try { player?.remove(); } catch { /* ya liberado */ } player = null; };
+  return () => { stopped = true; clearTimeout(free); try { player?.pause(); player?.remove(); } catch { /* ya liberado */ } player = null; };
 }
 
 export default function Intro() {
@@ -46,18 +47,26 @@ export default function Intro() {
   const leave = useRef(new Animated.Value(0)).current;
   const leaving = useRef(false);
 
+  const stopVoice = useRef<null | (() => void)>(null);
+  const hold = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // La voz solo suena con el logo en pantalla: al irse el logo, se corta lo que quede
   const exit = () => {
     if (leaving.current) return;
     leaving.current = true;
-    Animated.timing(leave, { toValue: 1, duration: 480, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => setDone(true));
+    clearTimeout(hold.current);
+    Animated.timing(leave, { toValue: 1, duration: 480, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(() => { stopVoice.current?.(); stopVoice.current = null; setDone(true); });
   };
+  const skip = () => { stopVoice.current?.(); stopVoice.current = null; exit(); };
 
   useEffect(() => {
     let live = true;
     AccessibilityInfo.isReduceMotionEnabled().then((reduce) => {
       if (!live) return;
       if (reduce) { setDone(true); return; }
-      if (getFlag(SOUND_KEY) !== "0") playWelcome(); // la voz termina sola aunque el logo ya se haya ido
+      const t0 = Date.now();
+      const voice = getFlag(SOUND_KEY) !== "0";
+      if (voice) stopVoice.current = playWelcome();
       const spring = (v: Animated.Value) => Animated.spring(v, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true });
       const blink = Animated.sequence([
         Animated.timing(eye, { toValue: 0.08, duration: 85, useNativeDriver: true }),
@@ -76,9 +85,14 @@ export default function Intro() {
           Animated.sequence([Animated.delay(70), Animated.spring(smile, { toValue: 1, friction: 5, useNativeDriver: true })]),
         ]),
         Animated.delay(380),
-      ]).start(({ finished }) => { if (finished) exit(); });
+      ]).start(({ finished }) => {
+        if (!finished) return;
+        // Con voz, el logo espera a que termine de hablar
+        const wait = voice ? VOICE_MS - (Date.now() - t0) : 0;
+        if (wait > 0) hold.current = setTimeout(exit, wait); else exit();
+      });
     });
-    return () => { live = false; };
+    return () => { live = false; clearTimeout(hold.current); stopVoice.current?.(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -101,7 +115,7 @@ export default function Intro() {
 
   return (
     <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 100, backgroundColor: C.cream, transform: [{ translateY: leave.interpolate({ inputRange: [0, 1], outputRange: [0, -height - 40] }) }] }]}>
-      <Pressable style={{ flex: 1, alignItems: "center", justifyContent: "center" }} onPress={exit} accessibilityLabel="Cosland" accessibilityRole="image">
+      <Pressable style={{ flex: 1, alignItems: "center", justifyContent: "center" }} onPress={skip} accessibilityLabel="Cosland" accessibilityRole="image">
         <View style={{ width: W, height: H }}>
           <Animated.View style={[StyleSheet.absoluteFill, pop(cat)]}>
             <Image source={IMG.gato} style={at(P.gato)} contentFit="fill" />
