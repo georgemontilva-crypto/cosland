@@ -2,8 +2,8 @@ import { useState, type ReactNode } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronRight, Eye, FileText, Heart, LogOut, Megaphone, Pencil, Plus, Share2, Shield, ShieldCheck, Store, Trash2, UserX, Volume2, VolumeX } from "lucide-react-native";
-import { formatPrice } from "@shared/catalog";
+import { ChevronRight, Eye, FileText, Heart, LogOut, Megaphone, Pencil, Plus, Share2, Shield, ShieldCheck, ShoppingBag, Store, Trash2, UserX, Volume2, VolumeX } from "lucide-react-native";
+import { formatPrice, hasStock } from "@shared/catalog";
 import { getFlag, setFlag, trpc } from "@/lib/api";
 import { openWebPage, shareLink } from "@/lib/actions";
 import { useSession } from "@/lib/session";
@@ -35,6 +35,9 @@ export default function Account() {
   const mine = trpc.listing.mine.useQuery(undefined, { enabled: Boolean(me?.shop) });
   const [removing, setRemoving] = useState<null | { id: number; title: string }>(null);
   const [followers, setFollowers] = useState(false);
+  const sellOne = trpc.listing.sellOne.useMutation({
+    onSuccess: (r) => { utils.listing.invalidate(); utils.shop.invalidate(); toast(r.sold ? "Marcada como vendida" : `Anotado. Te quedan ${r.stock}.`); },
+  });
   // La voz que acompaña al logo al abrir la app
   const [sound, setSound] = useState(() => getFlag(SOUND_KEY) !== "0");
   const toggleSound = () => { const next = !sound; setSound(next); setFlag(SOUND_KEY, next ? "1" : "0"); if (next) playWelcome(); };
@@ -116,11 +119,12 @@ export default function Account() {
                       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
                         <T w="bold" size={14}>{formatPrice(l.priceCents, l.deal)}</T>
                         <Tag label={STATUS[l.status]?.label ?? l.status} bg={STATUS[l.status]?.bg} />
+                        {hasStock(l.kind, l.deal) && l.status === "active" && l.stock > 1 ? <T w="bold" size={13}>Quedan {l.stock}</T> : null}
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}><Eye size={13} color={C.cocoa} /><T size={13} color={C.cocoa}>{l.views}</T></View>
                       </View>
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
                         <Btn small label="Editar" onPress={() => router.push(`/editar/${l.id}`)} />
-                        {l.status === "active" && <Btn small kind="matcha" label="Vendido" onPress={() => setStatus.mutate({ id: l.id, status: "sold" })} />}
+                        {l.status === "active" && <Btn small kind="matcha" label={hasStock(l.kind, l.deal) && l.stock > 1 ? "Vendí una" : "Vendido"} disabled={sellOne.isPending} onPress={() => sellOne.mutate({ id: l.id })} />}
                         {l.status === "active" && <Btn small label="Pausar" onPress={() => setStatus.mutate({ id: l.id, status: "paused" })} />}
                         {l.status !== "active" && <Btn small label="Volver a publicar" onPress={() => setStatus.mutate({ id: l.id, status: "active" })} />}
                         <Btn small kind="ghost" label="Eliminar" icon={<Trash2 size={15} color={C.berry} />} onPress={() => setRemoving({ id: l.id, title: l.title })} />
@@ -134,6 +138,7 @@ export default function Account() {
         )}
 
         <View style={[soft, { overflow: "hidden", marginTop: 6 }]}>
+          {me && <Row icon={<ShoppingBag size={19} color={C.ink} />} label={me.orders ? `Pedidos (${me.orders} por atender)` : "Pedidos"} onPress={() => router.push("/pedidos")} />}
           {me && <Row icon={<Heart size={19} color={C.ink} />} label="Favoritos" onPress={() => router.push("/favoritos")} />}
           <Row icon={<Megaphone size={19} color={C.ink} />} label="Se busca" onPress={() => router.push("/se-busca")} />
           <Row icon={<Store size={19} color={C.ink} />} label="Vitrinas" onPress={() => router.push("/vitrinas")} />

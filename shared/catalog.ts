@@ -43,6 +43,22 @@ export type DealId = (typeof DEALS)[number]["id"];
 export const DEAL_IDS = DEALS.map((d) => d.id) as [DealId, ...DealId[]];
 export const dealLabel = (id?: string | null) => DEALS.find((d) => d.id === id)?.label ?? "";
 
+// Solo lo que se vende por unidades lleva cantidad; servicios, alquileres y encargos no se agotan
+export const hasStock = (kind?: string | null, deal?: string | null) => kind === "product" && deal === "venta";
+
+// Pedidos: el comprador pide, el vendedor acepta y entrega, el comprador confirma
+export const ORDER_STATUS = [
+  { id: "pending", label: "Por confirmar" },
+  { id: "accepted", label: "Aceptado" },
+  { id: "delivered", label: "Entregado" },
+  { id: "completed", label: "Recibido" },
+  { id: "rejected", label: "Rechazado" },
+  { id: "cancelled", label: "Cancelado" },
+] as const;
+export type OrderStatus = (typeof ORDER_STATUS)[number]["id"];
+export const ORDER_STATUS_IDS = ORDER_STATUS.map((s) => s.id) as [OrderStatus, ...OrderStatus[]];
+export const orderStatusLabel = (id?: string | null) => ORDER_STATUS.find((s) => s.id === id)?.label ?? "";
+
 export const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "A medida", "Talla única"] as const;
 
 export const DELIVERY = [

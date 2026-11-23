@@ -73,10 +73,16 @@ export function useRealtime(userId: number | null) {
       });
       src.addEventListener("me", () => live.push(["me"]));
       src.addEventListener("chat", (e) => {
-        const m = JSON.parse((e as MessageEvent).data) as { conversationId: number; from: number; fromName: string };
+        const m = JSON.parse((e as MessageEvent).data) as { conversationId: number; from: number; fromName: string; silent?: boolean };
         refreshChat(m.conversationId);
         const open = location.pathname === `/mensajes/${m.conversationId}` && document.visibilityState === "visible";
-        if (m.from !== userId && !open) toast(`Nuevo mensaje de ${m.fromName}`);
+        if (m.from !== userId && !open && !m.silent) toast(`Nuevo mensaje de ${m.fromName}`);
+      });
+      // Pedidos: llega uno nuevo o la otra persona dio un paso
+      src.addEventListener("order", (e) => {
+        const m = JSON.parse((e as MessageEvent).data) as { text?: string };
+        live.push(["me"]);
+        if (m.text) toast(m.text);
       });
       src.addEventListener("follow", (e) => {
         const m = JSON.parse((e as MessageEvent).data) as { name: string };

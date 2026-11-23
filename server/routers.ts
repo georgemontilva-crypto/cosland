@@ -1,19 +1,19 @@
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { TRPCError } from "@trpc/server";
-import { and, or, eq, ne, like, desc, asc, sql, inArray, gte, lte, type SQL } from "drizzle-orm";
+import { and, or, eq, ne, like, desc, asc, sql, inArray, isNull, gte, lte, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/mysql-core";
 import { db } from "./db";
 import { publish, touch, T } from "./realtime";
 import { deleteImages } from "./storage";
 import {
-  users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports, contributions, settings,
+  users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports, contributions, settings, orders,
 } from "./schema";
 import {
   router, publicProcedure, authedProcedure, adminProcedure, signSession, wantsToken, COOKIE,
 } from "./trpc";
 import {
-  ACCENT_IDS, CATEGORY_IDS, CONDITION_IDS, DEAL_IDS, DELIVERY_IDS, SHOP_KIND_IDS, REPORT_REASONS, categoryOf,
+  ACCENT_IDS, CATEGORY_IDS, CONDITION_IDS, DEAL_IDS, DELIVERY_IDS, SHOP_KIND_IDS, REPORT_REASONS, categoryOf, hasStock,
 } from "../shared/catalog";
 
 const fail = (code: TRPCError["code"], message: string) => new TRPCError({ code, message });
@@ -43,7 +43,7 @@ const card = {
   id: listings.id, title: listings.title, priceCents: listings.priceCents, deal: listings.deal, kind: listings.kind,
   category: listings.category, condition: listings.condition, size: listings.size, series: listings.series,
   images: listings.images, status: listings.status, featured: listings.featured, acceptsTrade: listings.acceptsTrade,
-  createdAt: listings.createdAt, views: listings.views,
+  createdAt: listings.createdAt, views: listings.views, stock: listings.stock,
   shopId: shops.id, shopHandle: shops.handle, shopName: shops.name, shopCity: shops.city,
   shopVerified: shops.verified, shopAccent: shops.accent,
 };
@@ -85,8 +85,13 @@ const authRouter = router({
         .from(conversations).where(eq(conversations.shopId, shop.id));
       unread += b?.c ?? 0;
     }
+    // Pedidos que esperan algo de esta persona: por aceptar (si vende) o por confirmar recibido (si compró)
+    const [toDo] = await db.select({ c: n(sql`count(*)`) }).from(orders).where(or(
+      and(eq(orders.buyerId, ctx.user.id), eq(orders.status, "delivered")),
+      shop ? and(eq(orders.shopId, shop.id), eq(orders.status, "pending")) : undefined,
+    ));
     return {
-      ...ctx.user, unread,
+      ...ctx.user, unread, orders: toDo?.c ?? 0,
       shop: shop ? {
         id: shop.id, handle: shop.handle, name: shop.name, accent: shop.accent, avatarUrl: shop.avatarUrl,
         followers: (await db.select({ c: n(sql`count(*)`) }).from(follows).where(eq(follows.shopId, shop.id)))[0]?.c ?? 0,
@@ -163,6 +168,11 @@ const authRouter = router({
       await db.delete(messages).where(inArray(messages.conversationId, convs.map((c) => c.id)));
       await db.delete(conversations).where(inArray(conversations.id, convs.map((c) => c.id)));
     }
+    // Sus pedidos: lo que tenía apartado como comprador vuelve al vendedor
+    const reserved = await db.select({ listingId: orders.listingId, quantity: orders.quantity }).from(orders)
+      .where(and(eq(orders.buyerId, u.id), eq(orders.status, "accepted")));
+    for (const o of reserved) await releaseStock(o.listingId, o.quantity);
+    await db.delete(orders).where(or(eq(orders.buyerId, u.id), shop ? eq(orders.shopId, shop.id) : undefined));
     await db.delete(favorites).where(eq(favorites.userId, u.id));
     await db.delete(follows).where(eq(follows.userId, u.id));
     await db.delete(reviews).where(eq(reviews.authorId, u.id));
@@ -307,6 +317,8 @@ const listingInput = z.object({
   characterName: optText(100),
   delivery: z.enum(DELIVERY_IDS),
   images: z.array(imageUrl).max(8, "Máximo 8 fotos"),
+  // Unidades disponibles (solo artículos en venta). Si no viene, no se toca.
+  stock: z.number().int().min(1, "La cantidad mínima es 1").max(9999).optional(),
   // true: se suma 1 dólar al precio para aportarlo a Cosland. Si no viene, no se toca (la app nativa aún no lo usa).
   supportsApp: z.boolean().optional(),
 });
@@ -393,8 +405,16 @@ const listingRouter = router({
       .where(and(eq(listings.shopId, row.shop.id), eq(listings.status, "active"), ne(listings.id, input.id)))
       .orderBy(desc(listings.id)).limit(4);
     const { userId, ...shop } = row.shop;
+    // Si esta persona ya lo pidió y el pedido sigue en curso, se le muestra en vez del botón
+    let myOrder: { id: number; status: string } | null = null;
+    if (ctx.user && !isMine) {
+      const [o] = await db.select({ id: orders.id, status: orders.status }).from(orders)
+        .where(and(eq(orders.listingId, input.id), eq(orders.buyerId, ctx.user.id), inArray(orders.status, ["pending", "accepted", "delivered"])))
+        .orderBy(desc(orders.id)).limit(1);
+      myOrder = o ?? null;
+    }
     return {
-      ...row.listing, isMine, isFavorite, more,
+      ...row.listing, isMine, isFavorite, more, myOrder,
       shop: { ...shop, listingCount: row.listingCount, followers: row.followers, rating: row.rating, reviewCount: row.reviewCount },
     };
   }),
@@ -408,19 +428,23 @@ const listingRouter = router({
   save: authedProcedure.input(listingInput).mutation(async ({ ctx, input }) => {
     const shop = await shopOf(ctx.user.id);
     if (!shop) throw fail("PRECONDITION_FAILED", "Crea tu vitrina antes de publicar.");
-    const { id, price, supportsApp, ...rest } = input;
+    const { id, price, supportsApp, stock, ...rest } = input;
     const kind = categoryOf(input.category)?.kind ?? "product";
     const base = toCents(price);
+    const stocked = hasStock(kind, input.deal);
     const data = {
       ...rest, kind,
       priceCents: supportsApp && base != null ? base + SUPPORT_CENTS : base,
       condition: kind === "service" ? null : rest.condition ?? null,
       ...(supportsApp === undefined ? {} : { supportsApp }),
+      ...(stocked && stock !== undefined ? { stock } : {}),
     } as const;
     if (id) {
-      const [own] = await db.select({ id: listings.id }).from(listings).where(and(eq(listings.id, id), eq(listings.shopId, shop.id))).limit(1);
+      const [own] = await db.select({ id: listings.id, status: listings.status }).from(listings).where(and(eq(listings.id, id), eq(listings.shopId, shop.id))).limit(1);
       if (!own) throw fail("NOT_FOUND", "No encontramos esa publicación en tu vitrina.");
-      await db.update(listings).set(data).where(eq(listings.id, id));
+      // Reponer unidades de algo agotado lo vuelve a poner en venta
+      const restock = own.status === "sold" && stocked && stock !== undefined && stock > 0;
+      await db.update(listings).set(restock ? { ...data, status: "active" } : data).where(eq(listings.id, id));
       touch(T.listing(id), T.shop(shop.id), T.feed);
       return { id };
     }
@@ -434,26 +458,52 @@ const listingRouter = router({
     .mutation(async ({ ctx, input }) => {
       const shop = await shopOf(ctx.user.id);
       if (!shop) throw fail("NOT_FOUND", "No tienes vitrina.");
-      const [l] = await db.select({ id: listings.id, supportsApp: listings.supportsApp }).from(listings)
+      const [l] = await db.select({ id: listings.id, supportsApp: listings.supportsApp, kind: listings.kind, deal: listings.deal, stock: listings.stock }).from(listings)
         .where(and(eq(listings.id, input.id), eq(listings.shopId, shop.id))).limit(1);
       if (!l) throw fail("NOT_FOUND", "No encontramos esa publicación en tu vitrina.");
-      await db.update(listings).set({ status: input.status }).where(eq(listings.id, l.id));
+      const stocked = hasStock(l.kind, l.deal);
+      await db.update(listings).set({
+        status: input.status,
+        // Vendida del todo: sin unidades. Al volver a publicarla, al menos una.
+        ...(stocked && input.status === "sold" ? { stock: 0 } : {}),
+        ...(stocked && input.status === "active" && l.stock < 1 ? { stock: 1 } : {}),
+      }).where(eq(listings.id, l.id));
 
-      // Al vender algo que llevaba el dólar para Cosland, queda un aporte pendiente
+      // Al vender (por fuera de un pedido) algo que llevaba el dólar para Cosland, queda un aporte pendiente
       let contributionId: number | null = null;
       const [open] = await db.select({ id: contributions.id, status: contributions.status }).from(contributions)
-        .where(eq(contributions.listingId, l.id)).limit(1);
+        .where(and(eq(contributions.listingId, l.id), isNull(contributions.orderId))).orderBy(desc(contributions.id)).limit(1);
       if (input.status === "sold" && l.supportsApp && (await getSettings()).enabled) {
-        if (!open) {
+        if (open?.status === "pending") contributionId = open.id;
+        else {
           const [r] = await db.insert(contributions).values({ shopId: shop.id, listingId: l.id, amountCents: SUPPORT_CENTS });
           contributionId = r.insertId;
-        } else if (open.status === "pending") contributionId = open.id;
+        }
       } else if (input.status !== "sold" && open?.status === "pending") {
         await db.delete(contributions).where(eq(contributions.id, open.id)); // se arrepintió de marcarla vendida
       }
       touch(T.listing(l.id), T.shop(shop.id), T.feed);
       return { ok: true, contributionId };
     }),
+
+  // "Vendí una": una venta hecha por fuera de un pedido. Baja una unidad y, si era la última, queda vendida.
+  sellOne: authedProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const shop = await shopOf(ctx.user.id);
+    if (!shop) throw fail("NOT_FOUND", "No tienes vitrina.");
+    const [l] = await db.select({ id: listings.id, supportsApp: listings.supportsApp, kind: listings.kind, deal: listings.deal, stock: listings.stock, status: listings.status })
+      .from(listings).where(and(eq(listings.id, input.id), eq(listings.shopId, shop.id))).limit(1);
+    if (!l || l.status === "removed") throw fail("NOT_FOUND", "No encontramos esa publicación en tu vitrina.");
+    const left = hasStock(l.kind, l.deal) ? Math.max(0, l.stock - 1) : 0;
+    const sold = left === 0;
+    await db.update(listings).set({ ...(hasStock(l.kind, l.deal) ? { stock: left } : {}), ...(sold ? { status: "sold" as const } : {}) }).where(eq(listings.id, l.id));
+    let contributionId: number | null = null;
+    if (l.supportsApp && (await getSettings()).enabled) {
+      const [r] = await db.insert(contributions).values({ shopId: shop.id, listingId: l.id, amountCents: SUPPORT_CENTS });
+      contributionId = r.insertId;
+    }
+    touch(T.listing(l.id), T.shop(shop.id), T.feed);
+    return { ok: true, contributionId, stock: left, sold };
+  }),
 
   toggleFavorite: authedProcedure.input(z.object({ listingId: z.number().int() })).mutation(async ({ ctx, input }) => {
     const cond = and(eq(favorites.userId, ctx.user.id), eq(favorites.listingId, input.listingId));
@@ -478,7 +528,7 @@ const listingRouter = router({
 });
 
 /* ───────── Mensajes ───────── */
-async function postMessage(convId: number, senderId: number, fromSeller: boolean, body: string, listingId?: number | null, offerCents?: number | null) {
+async function postMessage(convId: number, senderId: number, fromSeller: boolean, body: string, listingId?: number | null, offerCents?: number | null, silent = false) {
   await db.insert(messages).values({ conversationId: convId, senderId, body, listingId: listingId ?? null, offerCents: offerCents ?? null });
   await db.update(conversations).set({
     lastBody: body.slice(0, 200), lastAt: new Date(),
@@ -490,7 +540,7 @@ async function postMessage(convId: number, senderId: number, fromSeller: boolean
     .where(eq(conversations.id, convId)).limit(1);
   if (who) {
     publish([who.buyerId, who.ownerId], "chat", {
-      conversationId: convId, from: senderId, fromName: fromSeller ? who.shopName : who.buyerName, preview: body.slice(0, 80),
+      conversationId: convId, from: senderId, fromName: fromSeller ? who.shopName : who.buyerName, preview: body.slice(0, 80), silent,
     });
   }
 }
@@ -583,6 +633,119 @@ const chatRouter = router({
     await postMessage(input.id, ctx.user.id, asSeller, input.body, null, toCents(input.offer));
     return { ok: true };
   }),
+});
+
+/* ───────── Pedidos: el flujo de venta ───────── */
+// Devuelve unidades a una publicación (pedido cancelado) y la reactiva si se había agotado
+async function releaseStock(listingId: number, quantity: number) {
+  const [l] = await db.select({ kind: listings.kind, deal: listings.deal, status: listings.status }).from(listings).where(eq(listings.id, listingId)).limit(1);
+  if (!l || !hasStock(l.kind, l.deal)) return;
+  await db.update(listings).set({ stock: sql`${listings.stock} + ${quantity}`, ...(l.status === "sold" ? { status: "active" as const } : {}) }).where(eq(listings.id, listingId));
+}
+
+const orderRouter = router({
+  // El comprador toca "Lo quiero": queda el pedido y se abre el chat con el vendedor
+  create: authedProcedure
+    .input(z.object({ listingId: z.number().int(), quantity: z.number().int().min(1).max(99).default(1), note: optText(500) }))
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await db.select({ l: listings, shopId: shops.id, ownerId: shops.userId }).from(listings)
+        .innerJoin(shops, eq(shops.id, listings.shopId)).where(eq(listings.id, input.listingId)).limit(1);
+      if (!row || row.l.status !== "active") throw fail("BAD_REQUEST", "Esta publicación ya no está disponible.");
+      if (row.ownerId === ctx.user.id) throw fail("BAD_REQUEST", "Esta publicación es tuya.");
+      const stocked = hasStock(row.l.kind, row.l.deal);
+      const quantity = stocked ? input.quantity : 1;
+      if (stocked && quantity > row.l.stock) throw fail("BAD_REQUEST", row.l.stock === 1 ? "Solo queda una unidad." : `Solo quedan ${row.l.stock} unidades.`);
+      // Un pedido en curso por publicación y persona
+      const [open] = await db.select({ id: orders.id, conversationId: orders.conversationId }).from(orders)
+        .where(and(eq(orders.listingId, row.l.id), eq(orders.buyerId, ctx.user.id), inArray(orders.status, ["pending", "accepted"]))).limit(1);
+      if (open) return { id: open.id, conversationId: open.conversationId, existing: true };
+
+      const conversationId = await openConversation(ctx.user.id, row.shopId);
+      const [r] = await db.insert(orders).values({
+        listingId: row.l.id, shopId: row.shopId, buyerId: ctx.user.id, conversationId,
+        title: row.l.title, unitPriceCents: row.l.priceCents, quantity, note: input.note,
+      });
+      const what = quantity > 1 ? `${quantity} unidades de "${row.l.title}"` : `"${row.l.title}"`;
+      await postMessage(conversationId, ctx.user.id, false, `Hola, quiero ${row.l.kind === "service" ? "pedir" : "comprar"} ${what}.${input.note ? `\n${input.note}` : ""}`, row.l.id, null, true);
+      publish([row.ownerId], "order", { id: r.insertId, text: `Nuevo pedido de ${ctx.user.name.split(" ")[0]}: ${row.l.title}` });
+      touch(T.admin);
+      return { id: r.insertId, conversationId, existing: false };
+    }),
+
+  // Mis compras y mis ventas
+  mine: authedProcedure.query(async ({ ctx }) => {
+    const shop = await shopOf(ctx.user.id);
+    const rows = await db.select({
+      id: orders.id, status: orders.status, title: orders.title, quantity: orders.quantity, unitPriceCents: orders.unitPriceCents, note: orders.note,
+      createdAt: orders.createdAt, updatedAt: orders.updatedAt, listingId: orders.listingId, conversationId: orders.conversationId,
+      buyerId: orders.buyerId, buyerName: users.name, shopName: shops.name, shopHandle: shops.handle, shopAccent: shops.accent,
+      images: listings.images, deal: listings.deal,
+    }).from(orders)
+      .innerJoin(shops, eq(shops.id, orders.shopId)).innerJoin(users, eq(users.id, orders.buyerId)).leftJoin(listings, eq(listings.id, orders.listingId))
+      .where(or(eq(orders.buyerId, ctx.user.id), shop ? eq(orders.shopId, shop.id) : undefined))
+      .orderBy(desc(orders.id)).limit(200);
+    const view = ({ buyerId, buyerName, images, ...o }: (typeof rows)[number]) => ({ ...o, image: images?.[0] ?? null, buyerName: buyerName.split(" ")[0] });
+    return {
+      hasShop: Boolean(shop),
+      buying: rows.filter((o) => o.buyerId === ctx.user.id).map(view),
+      selling: shop ? rows.filter((o) => o.buyerId !== ctx.user.id).map(view) : [],
+    };
+  }),
+
+  // Cada paso del pedido. Quién puede hacer qué depende del estado.
+  act: authedProcedure
+    .input(z.object({ id: z.number().int(), action: z.enum(["accept", "reject", "cancel", "deliver", "receive"]) }))
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await db.select({ o: orders, ownerId: shops.userId }).from(orders).innerJoin(shops, eq(shops.id, orders.shopId)).where(eq(orders.id, input.id)).limit(1);
+      const isSeller = row?.ownerId === ctx.user.id, isBuyer = row?.o.buyerId === ctx.user.id;
+      if (!row || (!isSeller && !isBuyer)) throw fail("NOT_FOUND", "No encontramos ese pedido.");
+      const o = row.o;
+      const stale = () => fail("CONFLICT", "Ese pedido ya cambió. Mira cómo quedó y vuelve a intentar.");
+      const [l] = await db.select({ kind: listings.kind, deal: listings.deal, supportsApp: listings.supportsApp }).from(listings).where(eq(listings.id, o.listingId)).limit(1);
+      const stocked = Boolean(l) && hasStock(l.kind, l.deal);
+      const move = async (from: (typeof o.status)[], to: typeof o.status, extra: Record<string, unknown> = {}) => {
+        const [r] = await db.update(orders).set({ status: to, ...extra }).where(and(eq(orders.id, o.id), inArray(orders.status, from)));
+        if (!r.affectedRows) throw stale(); // otra pestaña o la otra persona se adelantó
+      };
+      let say = "", contributionId: number | null = null;
+
+      if (input.action === "accept" && isSeller) {
+        if (o.status !== "pending") throw stale();
+        if (stocked) {
+          // Se apartan las unidades; si ya no alcanzan, no se puede aceptar
+          const [r] = await db.update(listings).set({ stock: sql`${listings.stock} - ${o.quantity}` }).where(and(eq(listings.id, o.listingId), gte(listings.stock, o.quantity)));
+          if (!r.affectedRows) throw fail("BAD_REQUEST", "Ya no te quedan suficientes unidades para este pedido. Repón la cantidad en la publicación o recházalo.");
+        }
+        try { await move(["pending"], "accepted"); } catch (e) { if (stocked) await releaseStock(o.listingId, o.quantity); throw e; }
+        if (stocked) await db.update(listings).set({ status: "sold" }).where(and(eq(listings.id, o.listingId), lte(listings.stock, 0), eq(listings.status, "active")));
+        say = `Acepté tu pedido de "${o.title}". Cuéntame cómo prefieres pagar y recibirlo.`;
+      } else if (input.action === "reject" && isSeller) {
+        await move(["pending"], "rejected");
+        say = `No puedo atender el pedido de "${o.title}".`;
+      } else if (input.action === "cancel" && (isBuyer || isSeller)) {
+        const from: (typeof o.status)[] = isBuyer ? ["pending", "accepted"] : ["accepted"];
+        if (!from.includes(o.status)) throw stale();
+        await move(from, "cancelled");
+        if (o.status === "accepted") await releaseStock(o.listingId, o.quantity);
+        say = `Cancelé el pedido de "${o.title}".`;
+      } else if (input.action === "deliver" && isSeller) {
+        await move(["accepted"], "delivered", { deliveredAt: new Date() });
+        // La venta se cerró: si la publicación llevaba el dólar para Cosland, queda el aporte de este pedido
+        if (l?.supportsApp && (await getSettings()).enabled) {
+          const [r] = await db.insert(contributions).values({ shopId: o.shopId, listingId: o.listingId, orderId: o.id, amountCents: SUPPORT_CENTS * o.quantity });
+          contributionId = r.insertId;
+        }
+        say = `Marqué como entregado tu pedido de "${o.title}". Cuando lo tengas, confírmalo en Pedidos.`;
+      } else if (input.action === "receive" && isBuyer) {
+        await move(["delivered"], "completed");
+        say = `Confirmé que recibí "${o.title}". ¡Gracias!`;
+      } else throw fail("FORBIDDEN", "No puedes hacer eso con este pedido.");
+
+      if (o.conversationId) await postMessage(o.conversationId, ctx.user.id, isSeller, say, o.listingId);
+      publish([isSeller ? o.buyerId : row.ownerId], "order", { id: o.id });
+      touch(T.listing(o.listingId), T.shop(o.shopId), T.feed, T.admin, contributionId ? T.support : null);
+      return { ok: true, contributionId };
+    }),
 });
 
 /* ───────── Reseñas ───────── */
@@ -720,7 +883,9 @@ const adminRouter = router({
       c(sql`select count(*) c from wanted where status = 'open'`),
     ]);
     const toVerify = await c(sql`select count(*) c from contributions where status = 'reported'`);
-    return { users: usersN, shops: shopsN, listings: listingsN, openReports, wanted: wantedN, contributionsToVerify: toVerify };
+    const sales = await c(sql`select count(*) c from orders where status in ('delivered', 'completed')`);
+    const openOrders = await c(sql`select count(*) c from orders where status in ('pending', 'accepted')`);
+    return { users: usersN, shops: shopsN, listings: listingsN, openReports, wanted: wantedN, contributionsToVerify: toVerify, sales, openOrders };
   }),
 
   listings: adminProcedure.input(z.object({ q: z.string().max(80).optional() }).optional()).query(({ input }) =>
@@ -766,7 +931,10 @@ const adminRouter = router({
     if (input.banned) {
       // Al suspender una cuenta, sus publicaciones salen de la tienda
       const mine = await db.select({ id: shops.id }).from(shops).where(eq(shops.userId, input.userId));
-      if (mine.length) await db.update(listings).set({ status: "removed" }).where(inArray(listings.shopId, mine.map((s) => s.id)));
+      if (mine.length) {
+        await db.update(listings).set({ status: "removed" }).where(inArray(listings.shopId, mine.map((s) => s.id)));
+        await db.update(orders).set({ status: "cancelled" }).where(and(inArray(orders.shopId, mine.map((s) => s.id)), inArray(orders.status, ["pending", "accepted"])));
+      }
       touch(T.feed, T.shops, ...mine.map((s) => T.shop(s.id)));
     }
     touch(T.admin);
@@ -786,6 +954,16 @@ const adminRouter = router({
     touch(T.admin);
     return { ok: true };
   }),
+
+  // Ventas: todos los pedidos hechos dentro de Cosland
+  orders: adminProcedure.query(() =>
+    db.select({
+      id: orders.id, status: orders.status, title: orders.title, quantity: orders.quantity, unitPriceCents: orders.unitPriceCents,
+      createdAt: orders.createdAt, deliveredAt: orders.deliveredAt, listingId: orders.listingId,
+      shopName: shops.name, shopHandle: shops.handle, buyerName: users.name, buyerEmail: users.email,
+      contribution: sql<string | null>`(select c.status from contributions c where c.order_id = orders.id limit 1)`,
+    }).from(orders).innerJoin(shops, eq(shops.id, orders.shopId)).innerJoin(users, eq(users.id, orders.buyerId))
+      .orderBy(desc(orders.id)).limit(300)),
 
   /* Aportes: ajustes y verificación */
   supportSettings: adminProcedure.query(() => getSettings()),
@@ -826,6 +1004,6 @@ const adminRouter = router({
 
 export const appRouter = router({
   auth: authRouter, shop: shopRouter, listing: listingRouter, chat: chatRouter,
-  review: reviewRouter, wanted: wantedRouter, report: reportRouter, support: supportRouter, admin: adminRouter,
+  review: reviewRouter, wanted: wantedRouter, report: reportRouter, support: supportRouter, order: orderRouter, admin: adminRouter,
 });
 export type AppRouter = typeof appRouter;

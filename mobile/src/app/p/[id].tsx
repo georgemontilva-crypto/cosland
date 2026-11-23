@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ArrowLeft, BadgeCheck, Eye, Flag, Heart, MapPin, MessageCircle, Pencil, Repeat2, Share2, ShieldCheck } from "lucide-react-native";
-import { REPORT_REASONS, categoryOf, conditionLabel, dealLabel, deliveryLabel, formatPrice, shopKindLabel } from "@shared/catalog";
+import { ArrowLeft, BadgeCheck, Eye, Flag, Heart, MapPin, MessageCircle, Pencil, Repeat2, Share2, ShieldCheck, Phone, ShoppingBag } from "lucide-react-native";
+import { REPORT_REASONS, categoryOf, conditionLabel, dealLabel, deliveryLabel, formatPrice, shopKindLabel, hasStock } from "@shared/catalog";
 import { errText, timeAgo, trpc, whatsappLink } from "@/lib/api";
 import { openExternal, shareLink } from "@/lib/actions";
 import { requireLogin, useFavorites, useSession } from "@/lib/session";
@@ -11,6 +11,7 @@ import { BORDER, C } from "@/lib/theme";
 import { Awning, Avatar, Btn, Empty, Field, H2, IconBtn, Input, Loading, Photo, Screen, Select, Sheet, Stars, T, Tag, panel, soft, useToast } from "@/ui/core";
 import { Grid, PAD } from "@/ui/cards";
 import ContactSheet from "@/ui/ContactSheet";
+import OrderSheet from "@/ui/OrderSheet";
 
 export default function ListingScreen() {
   const id = Number(useLocalSearchParams<{ id: string }>().id);
@@ -24,6 +25,7 @@ export default function ListingScreen() {
   const q = trpc.listing.byId.useQuery({ id }, { retry: false, enabled: Number.isInteger(id) });
   const [photo, setPhoto] = useState(0);
   const [contact, setContact] = useState(false);
+  const [ordering, setOrdering] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [reason, setReason] = useState<string>(REPORT_REASONS[0]);
   const [detail, setDetail] = useState("");
@@ -76,6 +78,7 @@ export default function ListingScreen() {
           </View>
           <T w="black" size={26} style={{ lineHeight: 30 }} accessibilityRole="header">{l.title}</T>
           <T w="black" size={32} style={{ marginTop: 6 }}>{formatPrice(l.priceCents, l.deal)}</T>
+          {hasStock(l.kind, l.deal) && l.status === "active" && l.stock > 1 ? <T w="bold" style={{ marginTop: 2 }}>Quedan {l.stock} disponibles</T> : null}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 }}>
             <T size={13.5} color={C.cocoa}>Publicado {timeAgo(l.createdAt)}</T>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><Eye size={14} color={C.cocoa} /><T size={13.5} color={C.cocoa}>{l.views} {l.views === 1 ? "visita" : "visitas"}</T></View>
@@ -136,15 +139,18 @@ export default function ListingScreen() {
           <IconBtn label={on ? "Quitar de favoritos" : "Guardar en favoritos"} size={50} border bg={on ? C.sakura : C.paper} onPress={() => fav.toggle(l.id)}>
             <Heart size={21} color={on ? C.berry : C.ink} fill={on ? C.berry : "transparent"} strokeWidth={2.2} />
           </IconBtn>
+          <IconBtn label="Escribir al vendedor" size={50} border bg={C.paper} onPress={() => (me ? setContact(true) : login())}><MessageCircle size={21} color={C.ink} strokeWidth={2.2} /></IconBtn>
           {s.whatsapp && l.status === "active" ? (
-            <Btn label="WhatsApp" kind="matcha" style={{ minHeight: 50 }}
-              onPress={() => openExternal(whatsappLink(s.whatsapp!, `Hola, vi "${l.title}" en Cosland. ¿Sigue disponible?`))} />
+            <IconBtn label="Preguntar por WhatsApp" size={50} border bg={C.matcha} onPress={() => openExternal(whatsappLink(s.whatsapp!, `Hola, vi "${l.title}" en Cosland. ¿Sigue disponible?`))}><Phone size={20} color={C.ink} strokeWidth={2.2} /></IconBtn>
           ) : null}
-          <Btn label={s.whatsapp ? "Escribir" : l.kind === "service" ? "Pedir este servicio" : "Escribir al vendedor"} kind="ink" grow disabled={l.status !== "active"} style={{ minHeight: 50 }}
-            icon={<MessageCircle size={18} color={C.cream} />} onPress={() => (me ? setContact(true) : login())} />
+          {l.myOrder
+            ? <Btn label="Ver mi pedido" kind="yuzu" grow style={{ minHeight: 50 }} icon={<ShoppingBag size={18} color={C.ink} />} onPress={() => router.push("/pedidos")} />
+            : <Btn label={l.kind === "service" ? "Pedir este servicio" : "Lo quiero"} kind="ink" grow disabled={l.status !== "active"} style={{ minHeight: 50 }}
+                icon={<ShoppingBag size={18} color={C.cream} />} onPress={() => (me ? setOrdering(true) : login())} />}
         </View>
       )}
 
+      <OrderSheet open={ordering} onClose={() => setOrdering(false)} item={l} />
       <ContactSheet open={contact} onClose={() => setContact(false)} shopId={s.id} shopName={s.name} listingId={l.id} listingTitle={l.title} withOffer={l.kind === "product"} />
       <Sheet open={reporting} onClose={() => setReporting(false)} title="Denunciar publicación">
         <View style={{ gap: 16 }}>

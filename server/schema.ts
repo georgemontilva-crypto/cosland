@@ -2,7 +2,7 @@ import {
   mysqlTable, int, varchar, text, boolean, timestamp, mysqlEnum, uniqueIndex, index, customType, primaryKey,
 } from "drizzle-orm/mysql-core";
 import {
-  ACCENT_IDS, CONDITION_IDS, DEAL_IDS, DELIVERY_IDS, SHOP_KIND_IDS,
+  ACCENT_IDS, CONDITION_IDS, DEAL_IDS, DELIVERY_IDS, ORDER_STATUS_IDS, SHOP_KIND_IDS,
 } from "../shared/catalog";
 
 // Lista de URLs guardada como texto JSON (funciona igual en MySQL y MariaDB)
@@ -66,6 +66,8 @@ export const listings = mysqlTable("listings", {
   images: stringList("images").notNull(),
   // El vendedor sumó 1 dólar al precio para aportarlo a Cosland cuando venda
   supportsApp: boolean("supports_app").notNull().default(false),
+  // Unidades disponibles (solo cuenta en artículos en venta; al llegar a 0 la publicación queda vendida)
+  stock: int("stock").notNull().default(1),
   status: mysqlEnum("status", ["active", "paused", "sold", "removed"]).notNull().default("active"),
   featured: boolean("featured").notNull().default(false),
   views: int("views").notNull().default(0),
@@ -148,6 +150,7 @@ export const contributions = mysqlTable("contributions", {
   id: int("id").autoincrement().primaryKey(),
   shopId: int("shop_id").notNull(),
   listingId: int("listing_id"),
+  orderId: int("order_id"), // si el aporte salió de un pedido cerrado dentro de Cosland
   amountCents: int("amount_cents").notNull().default(100),
   // pending: vendió y aún no envía · reported: dice que ya envió · confirmed: el admin lo verificó
   status: mysqlEnum("status", ["pending", "reported", "confirmed", "dismissed"]).notNull().default("pending"),
@@ -157,6 +160,24 @@ export const contributions = mysqlTable("contributions", {
   reportedAt: timestamp("reported_at"),
   confirmedAt: timestamp("confirmed_at"),
 }, (t) => [index("contrib_shop_idx").on(t.shopId, t.status), index("contrib_status_idx").on(t.status, t.confirmedAt)]);
+
+// Pedidos: el registro de cada venta acordada dentro de Cosland (el pago va por fuera, entre las dos personas)
+export const orders = mysqlTable("orders", {
+  id: int("id").autoincrement().primaryKey(),
+  listingId: int("listing_id").notNull(),
+  shopId: int("shop_id").notNull(),
+  buyerId: int("buyer_id").notNull(),
+  conversationId: int("conversation_id"),
+  // Copia de cómo estaba la publicación al pedir, por si luego cambia
+  title: varchar("title", { length: 120 }).notNull(),
+  unitPriceCents: int("unit_price_cents"),
+  quantity: int("quantity").notNull().default(1),
+  note: varchar("note", { length: 500 }),
+  status: mysqlEnum("status", ORDER_STATUS_IDS).notNull().default("pending"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  deliveredAt: timestamp("delivered_at"),
+}, (t) => [index("orders_shop_idx").on(t.shopId, t.status), index("orders_buyer_idx").on(t.buyerId, t.status), index("orders_listing_idx").on(t.listingId)]);
 
 // Ajustes que el administrador cambia desde el panel (por ejemplo, la cuenta para los aportes)
 export const settings = mysqlTable("settings", {

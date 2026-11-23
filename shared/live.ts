@@ -19,7 +19,7 @@ const FIXED: Record<string, string[]> = {
   shops: ["shop.list", "shop.following", "listing.home"],
   wanted: ["wanted.list", "listing.home"],
   support: ["support.info"],
-  me: ["auth.me", "shop.mine", "listing.mine", "support.mine"],
+  me: ["auth.me", "shop.mine", "listing.mine", "support.mine", "order.mine"],
 };
 
 function matches(q: LiveQuery, topic: string): boolean {

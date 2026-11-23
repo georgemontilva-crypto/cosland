@@ -1,6 +1,6 @@
 import { Link } from "wouter";
-import { Eye, Pencil, Plus, Share2 } from "lucide-react";
-import { formatPrice } from "@shared/catalog";
+import { Eye, Pencil, Plus, Share2, ShoppingBag } from "lucide-react";
+import { formatPrice, hasStock } from "@shared/catalog";
 import { trpc } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
 import { Awning, Avatar, Empty, Loading, useToast } from "@/components/ui";
@@ -28,6 +28,16 @@ export default function Dashboard() {
       if (r.contributionId) setOwed({ id: r.contributionId, title: mine.data?.find((l) => l.id === v.id)?.title });
     },
   });
+
+  const sellOne = trpc.listing.sellOne.useMutation({
+    onSuccess: (r, v) => {
+      utils.listing.invalidate(); utils.support.invalidate(); toast(r.sold ? "Marcada como vendida" : `Anotado. Te quedan ${r.stock}.`);
+      if (r.contributionId) setOwed({ id: r.contributionId, title: mine.data?.find((l) => l.id === v.id)?.title });
+    },
+  });
+  const orders = trpc.order.mine.useQuery(undefined, { enabled: Boolean(me?.shop) });
+  const toAnswer = orders.data?.selling.filter((o) => o.status === "pending").length ?? 0;
+  const toDeliver = orders.data?.selling.filter((o) => o.status === "accepted").length ?? 0;
 
   const [followers, setFollowers] = useState(false);
   if (loading) return <Loading />;
@@ -89,6 +99,15 @@ export default function Dashboard() {
         </section>
       )}
 
+      <Link href="/pedidos" className={`mt-6 flex items-center gap-3 rounded-[1.75rem] border-[1.5px] border-ink p-4 ${toAnswer ? "bg-yuzu" : "bg-paper"}`}>
+        <ShoppingBag size={22} className="shrink-0" />
+        <span className="flex-1">
+          <b className="block">{toAnswer ? `${toAnswer} ${toAnswer === 1 ? "pedido por aceptar" : "pedidos por aceptar"}` : "Pedidos y ventas"}</b>
+          <span className="text-sm text-cocoa">{toDeliver ? `${toDeliver} por entregar. ` : ""}Aquí aceptas pedidos y marcas las entregas.</span>
+        </span>
+        <span className="font-bold underline underline-offset-4 shrink-0">Ver</span>
+      </Link>
+
       <h2 className="text-2xl mt-10 mb-4">Mis publicaciones</h2>
       {mine.isLoading ? <Loading /> : !items.length ? (
         <Empty title="Tu vitrina está lista para su primer artículo" action={<Link href="/publicar" className="btn btn-sakura">Publicar ahora</Link>}>
@@ -104,11 +123,12 @@ export default function Dashboard() {
                 <p className="text-sm mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="font-bold">{formatPrice(l.priceCents, l.deal)}</span>
                   <span className="tag !border-ink/40" style={{ background: STATUS[l.status]?.bg }}>{STATUS[l.status]?.label}</span>
+                  {hasStock(l.kind, l.deal) && l.status === "active" && l.stock > 1 && <span className="font-bold">Quedan {l.stock}</span>}
                   <span className="text-cocoa inline-flex items-center gap-1"><Eye size={13} />{l.views}</span>
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <Link href={`/editar/${l.id}`} className="btn btn-sm">Editar</Link>
-                  {l.status === "active" && <button className="btn btn-sm btn-matcha" onClick={() => setStatus.mutate({ id: l.id, status: "sold" })}>Vendido</button>}
+                  {l.status === "active" && <button className="btn btn-sm btn-matcha" disabled={sellOne.isPending} onClick={() => sellOne.mutate({ id: l.id })}>{hasStock(l.kind, l.deal) && l.stock > 1 ? "Vendí una" : "Vendido"}</button>}
                   {l.status === "active" && <button className="btn btn-sm" onClick={() => setStatus.mutate({ id: l.id, status: "paused" })}>Pausar</button>}
                   {l.status !== "active" && <button className="btn btn-sm" onClick={() => setStatus.mutate({ id: l.id, status: "active" })}>Volver a publicar</button>}
                   <button className="btn btn-sm btn-ghost !text-berry" onClick={() => { if (confirm(`¿Eliminar "${l.title}"? No se puede deshacer.`)) setStatus.mutate({ id: l.id, status: "removed" }); }}>Eliminar</button>

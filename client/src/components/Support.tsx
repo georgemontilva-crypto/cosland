@@ -31,7 +31,7 @@ export function SupporterBadge() {
 }
 
 // Después de vender: a dónde enviar el dólar y cómo avisar que ya se envió
-export function SupportModal({ id, title, onClose }: { id: number; title?: string | null; onClose: () => void }) {
+export function SupportModal({ id, title, amountCents, onClose }: { id: number; title?: string | null; amountCents?: number; onClose: () => void }) {
   const s = useSupport();
   const toast = useToast();
   const utils = trpc.useUtils();
@@ -42,7 +42,7 @@ export function SupportModal({ id, title, onClose }: { id: number; title?: strin
   const skip = trpc.support.skip.useMutation({ onSuccess: done });
   return (
     <Modal title="Envía tu dólar a Cosland" onClose={onClose}>
-      <p>{title ? <>Vendiste “{title}”. </> : null}Con {formatPrice(s?.amountCents ?? 100)} por venta ayudas a que Cosland siga funcionando para toda la comunidad.</p>
+      <p>{title ? <>Vendiste “{title}”. </> : null}Con {amountCents ? `${formatPrice(amountCents)} de esta venta` : `${formatPrice(s?.amountCents ?? 100)} por venta`} ayudas a que Cosland siga funcionando para toda la comunidad.</p>
       <div className="mt-4 rounded-[1.4rem] bg-paper border-[1.5px] border-ink p-4">
         <p className="text-sm font-bold text-cocoa">Datos para enviarlo</p>
         <p className="mt-1 whitespace-pre-line font-bold break-words">{s?.account || "El equipo de Cosland aún no ha publicado la cuenta."}</p>

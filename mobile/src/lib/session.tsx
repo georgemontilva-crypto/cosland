@@ -41,7 +41,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 // Canal en vivo: una sola conexión abierta con el servidor mientras la app está en primer plano.
 // Trae el chat y los seguidores al instante, y los avisos de qué cambió en vitrinas y publicaciones.
 const AWAY_MS = 20_000; // si la app estuvo en segundo plano más que esto, al volver se pone al día
-type LiveEvent = "chat" | "follow" | "sync" | "me" | "bye";
+type LiveEvent = "chat" | "follow" | "sync" | "me" | "bye" | "order";
 
 function Realtime({ userId, ready }: { userId: number | null; ready: boolean }) {
   const utils = trpc.useUtils();
@@ -78,9 +78,14 @@ function Realtime({ userId, ready }: { userId: number | null; ready: boolean }) 
       src.addEventListener("me", () => live.push(["me"]));
       src.addEventListener("chat", (e) => {
         if (!e.data) return;
-        const m = JSON.parse(e.data) as { conversationId: number; from: number; fromName: string };
+        const m = JSON.parse(e.data) as { conversationId: number; from: number; fromName: string; silent?: boolean };
         refreshChat(m.conversationId);
-        if (m.from !== userId && currentPath !== `/mensajes/${m.conversationId}`) toast(`Nuevo mensaje de ${m.fromName}`);
+        if (m.from !== userId && currentPath !== `/mensajes/${m.conversationId}` && !m.silent) toast(`Nuevo mensaje de ${m.fromName}`);
+      });
+      // Pedidos: llega uno nuevo o la otra persona dio un paso
+      src.addEventListener("order", (e) => {
+        live.push(["me"]);
+        try { const m = JSON.parse(e.data ?? "{}") as { text?: string }; if (m.text) toast(m.text); } catch { /* aviso ilegible */ }
       });
       src.addEventListener("follow", (e) => {
         if (!e.data) return;

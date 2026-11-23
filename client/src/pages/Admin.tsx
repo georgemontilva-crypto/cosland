@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { formatPrice, shopKindLabel } from "@shared/catalog";
+import { formatPrice, orderStatusLabel, shopKindLabel } from "@shared/catalog";
 import { trpc, timeAgo } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
 import { Empty, Loading, useToast } from "@/components/ui";
 
-type Tab = "resumen" | "publicaciones" | "vitrinas" | "usuarios" | "denuncias" | "aportes";
+const SALE_TONE: Record<string, string> = { pending: "#f8e29c", accepted: "#bcdfee", delivered: "#d8cbf0", completed: "#cde4be", rejected: "#f3e6cb", cancelled: "#f3e6cb" };
+
+type Tab = "resumen" | "publicaciones" | "vitrinas" | "usuarios" | "ventas" | "denuncias" | "aportes";
 
 export default function Admin() {
   const { me, loading } = useMe();
@@ -18,6 +20,7 @@ export default function Admin() {
   const listings = trpc.admin.listings.useQuery({ q }, { enabled: isAdmin && tab === "publicaciones" });
   const shops = trpc.admin.shops.useQuery(undefined, { enabled: isAdmin && tab === "vitrinas" });
   const users = trpc.admin.users.useQuery(undefined, { enabled: isAdmin && tab === "usuarios" });
+  const sales = trpc.admin.orders.useQuery(undefined, { enabled: isAdmin && tab === "ventas" });
   const reports = trpc.admin.reports.useQuery(undefined, { enabled: isAdmin && tab === "denuncias" });
   const cfg = trpc.admin.supportSettings.useQuery(undefined, { enabled: isAdmin && tab === "aportes" });
   const contribs = trpc.admin.contributions.useQuery(undefined, { enabled: isAdmin && tab === "aportes" });
@@ -42,7 +45,7 @@ export default function Admin() {
     </div>
   );
   const o = overview.data;
-  const tabs: [Tab, string][] = [["resumen", "Resumen"], ["publicaciones", "Publicaciones"], ["vitrinas", "Vitrinas"], ["usuarios", "Usuarios"], ["denuncias", `Denuncias${o?.openReports ? ` (${o.openReports})` : ""}`], ["aportes", `Aportes${o?.contributionsToVerify ? ` (${o.contributionsToVerify})` : ""}`]];
+  const tabs: [Tab, string][] = [["resumen", "Resumen"], ["publicaciones", "Publicaciones"], ["vitrinas", "Vitrinas"], ["usuarios", "Usuarios"], ["ventas", `Ventas${o?.openOrders ? ` (${o.openOrders})` : ""}`], ["denuncias", `Denuncias${o?.openReports ? ` (${o.openReports})` : ""}`], ["aportes", `Aportes${o?.contributionsToVerify ? ` (${o.contributionsToVerify})` : ""}`]];
 
   return (
     <div className="wrap pt-6 md:pt-10">
@@ -50,8 +53,8 @@ export default function Admin() {
       <div className="scroll-row mt-5 mb-7">{tabs.map(([id, label]) => <button key={id} className="chip" aria-pressed={tab === id} onClick={() => setTab(id)}>{label}</button>)}</div>
 
       {tab === "resumen" && (o ? (
-        <dl className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {[["Usuarios", o.users, "#bcdfee"], ["Vitrinas", o.shops, "#f6c3cf"], ["Publicaciones activas", o.listings, "#cde4be"], ["Pedidos abiertos", o.wanted, "#f8e29c"], ["Denuncias por revisar", o.openReports, "#d8cbf0"]].map(([k, v, bg]) => (
+        <dl className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[["Usuarios", o.users, "#bcdfee"], ["Vitrinas", o.shops, "#f6c3cf"], ["Publicaciones activas", o.listings, "#cde4be"], ["Ventas cerradas", o.sales, "#fad0b5"], ["Se busca abiertos", o.wanted, "#f8e29c"], ["Denuncias por revisar", o.openReports, "#d8cbf0"]].map(([k, v, bg]) => (
             <div key={k as string} className="rounded-[1.75rem] border-[1.5px] border-ink p-5" style={{ background: bg as string }}>
               <dd className="text-4xl font-extrabold">{v}</dd><dt className="font-bold mt-1 text-sm">{k}</dt>
             </div>
@@ -93,6 +96,24 @@ export default function Admin() {
                 <p className="text-sm text-cocoa break-all">{shopKindLabel(s.kind)}{s.city ? `, ${s.city}` : ""}. {s.listingCount} publicaciones. {s.email}</p>
               </div>
               <button className={`btn btn-sm ${s.verified ? "btn-matcha" : ""}`} onClick={() => setVerified.mutate({ shopId: s.id, verified: !s.verified })}>{s.verified ? "Verificada" : "Verificar"}</button>
+            </li>
+          ))}
+        </ul>
+      ))}
+
+      {tab === "ventas" && (sales.isLoading ? <Loading /> : !sales.data?.length ? <Empty title="Aún no hay pedidos">Aparecen aquí cuando alguien toca "Lo quiero" en una publicación.</Empty> : (
+        <ul className="grid gap-2.5">
+          {sales.data.map((v) => (
+            <li key={v.id} className="soft p-3.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              <div className="min-w-0 flex-1 basis-64">
+                <Link href={`/p/${v.listingId}`} className="font-extrabold leading-snug line-clamp-1">{v.title}{v.quantity > 1 ? ` (${v.quantity} unidades)` : ""}</Link>
+                <p className="text-sm text-cocoa break-words">
+                  <Link href={`/v/${v.shopHandle}`} className="underline underline-offset-2">{v.shopName}</Link> le vende a {v.buyerName} ({v.buyerEmail}). Pedido {timeAgo(v.createdAt)}
+                </p>
+              </div>
+              <span className="font-bold">{v.unitPriceCents != null ? formatPrice(v.unitPriceCents * v.quantity, "venta") : "A convenir"}</span>
+              <span className="tag !border-ink/40" style={{ background: SALE_TONE[v.status] }}>{orderStatusLabel(v.status)}</span>
+              {v.contribution && <span className="tag !border-ink/40" style={{ background: v.contribution === "confirmed" ? "#cde4be" : "#f8e29c" }}>Aporte {({ pending: "pendiente", reported: "por verificar", confirmed: "recibido", dismissed: "omitido" } as Record<string, string>)[v.contribution]}</span>}
             </li>
           ))}
         </ul>

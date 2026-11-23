@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Compass, Heart, Home as HomeIcon, LogOut, MessageCircle, Plus, Search, Shield, Store, User, Volume2, VolumeX } from "lucide-react";
+import { Compass, Heart, Home as HomeIcon, LogOut, MessageCircle, Plus, Search, Shield, ShoppingBag, Store, User, Volume2, VolumeX } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useMe, useRealtime } from "@/lib/hooks";
 import { previewSound, setSoundOn, soundOn } from "@/lib/sound";
@@ -38,8 +38,9 @@ function AccountMenu() {
   if (!me) return <Link href="/entrar" className="btn btn-sm">Entrar</Link>;
   return (
     <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="Tu cuenta" className="rounded-full block">
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="Tu cuenta" className="rounded-full block relative">
         <Avatar src={me.shop?.avatarUrl} name={me.shop?.name ?? me.name} accent={me.shop?.accent} size={40} />
+        {me.orders > 0 && <span className="absolute -top-1 -right-1 grid place-items-center min-w-5 h-5 px-1 rounded-full bg-berry text-cream text-[0.68rem] font-bold border-[1.5px] border-cream" aria-label={`${me.orders} pedidos por atender`}>{me.orders}</span>}
       </button>
       {open && (
         <>
@@ -49,6 +50,7 @@ function AccountMenu() {
             <Link href="/mi-vitrina" className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl hover:bg-oat font-bold"><Store size={18} />Mi vitrina</Link>
             <Link href="/favoritos" className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl hover:bg-oat font-bold"><Heart size={18} />Favoritos</Link>
             <Link href="/mensajes" className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl hover:bg-oat font-bold"><MessageCircle size={18} />Mensajes</Link>
+            <Link href="/pedidos" className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl hover:bg-oat font-bold"><ShoppingBag size={18} />Pedidos{me.orders ? <span className="ml-auto grid place-items-center min-w-6 h-6 px-1.5 rounded-full bg-berry text-cream text-xs">{me.orders}</span> : null}</Link>
             {me.role === "admin" && <Link href="/admin" className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl hover:bg-oat font-bold"><Shield size={18} />Administración</Link>}
             <button onClick={() => logout.mutate()} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-2xl hover:bg-oat font-bold text-left"><LogOut size={18} />Salir</button>
           </div>

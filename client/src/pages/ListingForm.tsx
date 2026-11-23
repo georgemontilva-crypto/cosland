@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { CATEGORIES, CONDITIONS, DEALS, DELIVERY, SIZES, categoryOf } from "@shared/catalog";
+import { CATEGORIES, CONDITIONS, DEALS, DELIVERY, SIZES, categoryOf, hasStock } from "@shared/catalog";
 import { trpc } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
 import { Empty, Field, Loading, useToast } from "@/components/ui";
@@ -13,7 +13,7 @@ const FANDOM = ["cosplay", "pelucas", "props", "accesorios", "figuras", "manga",
 
 const blank = {
   category: "cosplay", deal: "venta", title: "", description: "", price: "", acceptsTrade: false, condition: "usado",
-  size: "", measurements: "", series: "", characterName: "", delivery: "ambos", images: [] as string[], supportsApp: true,
+  size: "", measurements: "", series: "", characterName: "", delivery: "ambos", images: [] as string[], supportsApp: true, stock: "1",
 };
 
 export default function ListingForm({ id }: { id?: number }) {
@@ -38,7 +38,7 @@ export default function ListingForm({ id }: { id?: number }) {
     setF({
       category: l.category, deal: l.deal, title: l.title, description: l.description,
       // El precio guardado ya incluye el dólar para Cosland; aquí se muestra el del vendedor
-      price: l.priceCents != null ? String((l.priceCents - (l.supportsApp ? 100 : 0)) / 100) : "", supportsApp: l.supportsApp,
+      price: l.priceCents != null ? String((l.priceCents - (l.supportsApp ? 100 : 0)) / 100) : "", supportsApp: l.supportsApp, stock: String(Math.max(1, l.stock)),
       acceptsTrade: l.acceptsTrade, condition: l.condition ?? "usado", size: l.size ?? "", measurements: l.measurements ?? "",
       series: l.series ?? "", characterName: l.characterName ?? "", delivery: l.delivery, images: l.images,
     });
@@ -58,6 +58,7 @@ export default function ListingForm({ id }: { id?: number }) {
   const up = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((p) => ({ ...p, [k]: e.target.value }));
   const deals = isService ? DEALS.filter((d) => d.id === "encargo") : DEALS;
 
+  const stocked = hasStock(isService ? "service" : "product", f.deal);
   const submit = (e: React.FormEvent) => {
     e.preventDefault(); setError("");
     if (!isService && f.images.length === 0) { setError("Agrega al menos una foto del artículo."); return; }
@@ -68,6 +69,7 @@ export default function ListingForm({ id }: { id?: number }) {
       series: FANDOM.includes(f.category) ? f.series : "", characterName: FANDOM.includes(f.category) ? f.characterName : "",
       delivery: f.delivery as any, images: f.images,
       supportsApp: Boolean(support?.enabled) && f.supportsApp,
+      stock: stocked ? Math.max(1, Number(f.stock) || 1) : undefined,
     });
   };
 
@@ -100,6 +102,11 @@ export default function ListingForm({ id }: { id?: number }) {
           <Field label={isService || f.deal === "encargo" ? "Precio desde, en dólares" : f.deal === "alquiler" ? "Precio por evento, en dólares" : "Precio en dólares"} hint="Déjalo vacío si es a convenir.">
             <input className="input" inputMode="decimal" value={f.price} onChange={(e) => setF((p) => ({ ...p, price: e.target.value.replace(/[^\d.]/g, "") }))} placeholder="45" />
           </Field>
+          {stocked && (
+            <Field label="Cantidad disponible" hint="Si tienes varias iguales, pon cuántas. Se descuentan solas con cada venta.">
+              <input className="input" inputMode="numeric" value={f.stock} onChange={(e) => setF((p) => ({ ...p, stock: e.target.value.replace(/\D/g, "").slice(0, 4) }))} onBlur={() => setF((p) => ({ ...p, stock: String(Math.max(1, Number(p.stock) || 1)) }))} />
+            </Field>
+          )}
           {!isService && (
             <Field label="Condición">
               <select className="input" value={f.condition} onChange={up("condition")}>{CONDITIONS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select>

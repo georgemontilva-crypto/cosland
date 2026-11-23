@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { BadgeCheck, Eye, Flag, Heart, MapPin, MessageCircle, Pencil, Repeat2, Share2, ShieldCheck } from "lucide-react";
-import { REPORT_REASONS, categoryOf, conditionLabel, dealLabel, deliveryLabel, formatPrice, shopKindLabel } from "@shared/catalog";
+import { BadgeCheck, Eye, Flag, Heart, MapPin, MessageCircle, Pencil, Repeat2, Share2, ShieldCheck, ShoppingBag } from "lucide-react";
+import { REPORT_REASONS, categoryOf, conditionLabel, dealLabel, deliveryLabel, formatPrice, shopKindLabel, hasStock, orderStatusLabel } from "@shared/catalog";
 import { trpc, timeAgo, whatsappLink } from "@/lib/trpc";
 import { useFavorites, useMe } from "@/lib/hooks";
 import { Awning, Avatar, Empty, Field, Loading, Modal, Stars, useToast } from "@/components/ui";
 import { ListingGrid, Photo } from "@/components/cards";
 import ContactModal from "@/components/ContactModal";
 import { SupportModal } from "@/components/Support";
+import OrderModal from "@/components/OrderModal";
 
 export async function share(title: string, toast: (t: string) => void) {
   const url = location.href;
@@ -25,12 +26,15 @@ export default function ListingPage({ id }: { id: number }) {
   const utils = trpc.useUtils();
   const q = trpc.listing.byId.useQuery({ id }, { retry: false });
   const [photo, setPhoto] = useState(0);
-  const [modal, setModal] = useState<null | "contact" | "report">(null);
+  const [modal, setModal] = useState<null | "contact" | "report" | "order">(null);
   const [reason, setReason] = useState<string>(REPORT_REASONS[0]);
   const [detail, setDetail] = useState("");
   const [owed, setOwed] = useState<number | null>(null);
   const setStatus = trpc.listing.setStatus.useMutation({
     onSuccess: (r) => { utils.listing.invalidate(); utils.support.invalidate(); toast("Publicación actualizada"); if (r.contributionId) setOwed(r.contributionId); },
+  });
+  const sellOne = trpc.listing.sellOne.useMutation({
+    onSuccess: (r) => { utils.listing.invalidate(); utils.support.invalidate(); toast(r.sold ? "Marcada como vendida" : `Anotado. Te quedan ${r.stock}.`); if (r.contributionId) setOwed(r.contributionId); },
   });
   const report = trpc.report.create.useMutation({ onSuccess: () => { setModal(null); toast("Denuncia enviada. La revisaremos."); }, onError: (e) => toast(e.message, true) });
 
@@ -39,6 +43,7 @@ export default function ListingPage({ id }: { id: number }) {
   const l = q.data;
   const s = l.shop;
   const cat = categoryOf(l.category);
+  const stocked = hasStock(l.kind, l.deal);
   const needLogin = () => { toast("Entra a tu cuenta para continuar"); go(`/entrar?volver=/p/${id}`); };
   const rows = [
     ["Categoría", cat?.label], ["Modalidad", dealLabel(l.deal)], ["Condición", conditionLabel(l.condition)], ["Talla", l.size],
@@ -83,6 +88,7 @@ export default function ListingPage({ id }: { id: number }) {
           <h1 className="text-[1.75rem] md:text-4xl">{l.title}</h1>
           <p className="text-3xl md:text-4xl font-extrabold mt-3">{formatPrice(l.priceCents, l.deal)}</p>
           {l.supportsApp && <p className="text-sm text-cocoa mt-1">Incluye $1 que el vendedor aporta para mantener Cosland.</p>}
+          {stocked && l.status === "active" && l.stock > 1 && <p className="mt-2 font-bold">Quedan {l.stock} disponibles</p>}
           <p className="text-sm text-cocoa mt-2 flex items-center gap-3">
             <span>Publicado {timeAgo(l.createdAt)}</span>
             <span className="inline-flex items-center gap-1"><Eye size={14} />{l.views} {l.views === 1 ? "visita" : "visitas"}</span>
@@ -91,14 +97,24 @@ export default function ListingPage({ id }: { id: number }) {
           {l.isMine ? (
             <div className="mt-6 flex flex-wrap gap-2">
               <Link href={`/editar/${l.id}`} className="btn btn-ink"><Pencil size={17} />Editar</Link>
-              {l.status === "active" && <button className="btn btn-matcha" onClick={() => setStatus.mutate({ id: l.id, status: "sold" })}>Marcar como vendido</button>}
+              {l.status === "active" && <button className="btn btn-matcha" disabled={sellOne.isPending} onClick={() => sellOne.mutate({ id: l.id })}>{stocked && l.stock > 1 ? "Vendí una" : "Marcar como vendido"}</button>}
               {l.status !== "active" && <button className="btn" onClick={() => setStatus.mutate({ id: l.id, status: "active" })}>Volver a publicar</button>}
               <button className="btn" onClick={() => share(l.title, toast)}><Share2 size={17} />Compartir</button>
             </div>
           ) : (
             <div className="mt-6 grid gap-2.5">
-              <button className="btn btn-ink !min-h-13 text-base" style={{ minHeight: "3.25rem" }} disabled={l.status !== "active"} onClick={() => (me ? setModal("contact") : needLogin())}>
-                <MessageCircle size={19} />{l.kind === "service" ? "Pedir este servicio" : "Escribir al vendedor"}
+              {l.myOrder ? (
+                <div className="panel p-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <p className="flex-1 basis-48"><b>Ya lo pediste.</b> Estado: {orderStatusLabel(l.myOrder.status).toLowerCase()}.</p>
+                  <Link href="/pedidos" className="btn btn-sm btn-ink">Ver mi pedido</Link>
+                </div>
+              ) : (
+                <button className="btn btn-ink !min-h-13 text-base" style={{ minHeight: "3.25rem" }} disabled={l.status !== "active"} onClick={() => (me ? setModal("order") : needLogin())}>
+                  <ShoppingBag size={19} />{l.kind === "service" ? "Pedir este servicio" : "Lo quiero"}
+                </button>
+              )}
+              <button className="btn" disabled={l.status !== "active"} onClick={() => (me ? setModal("contact") : needLogin())}>
+                <MessageCircle size={18} />Escribir al vendedor
               </button>
               {s.whatsapp && l.status === "active" && (
                 <a className="btn btn-matcha" target="_blank" rel="noopener noreferrer"
@@ -158,6 +174,7 @@ export default function ListingPage({ id }: { id: number }) {
       )}
 
       {owed && <SupportModal id={owed} title={l.title} onClose={() => setOwed(null)} />}
+      {modal === "order" && <OrderModal item={l} onClose={() => setModal(null)} />}
       {modal === "contact" && <ContactModal shopId={s.id} shopName={s.name} listingId={l.id} listingTitle={l.title} withOffer={l.kind === "product"} onClose={() => setModal(null)} />}
       {modal === "report" && (
         <Modal title="Denunciar publicación" onClose={() => setModal(null)}>

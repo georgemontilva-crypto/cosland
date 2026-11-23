@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { router } from "expo-router";
-import { ACCENTS, CATEGORIES, CONDITIONS, COUNTRIES, DEALS, DELIVERY, SHOP_KINDS, SIZES, categoryOf, slugify } from "@shared/catalog";
+import { ACCENTS, CATEGORIES, CONDITIONS, COUNTRIES, DEALS, DELIVERY, SHOP_KINDS, SIZES, categoryOf, slugify, hasStock } from "@shared/catalog";
 import { errText, trpc } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { BORDER, C } from "@/lib/theme";
@@ -113,7 +113,7 @@ const WEARABLE = ["cosplay", "pelucas", "accesorios", "merch"];
 const FANDOM = ["cosplay", "pelucas", "props", "accesorios", "figuras", "manga", "cartas", "merch", "arte", "videojuegos"];
 const listingBlank = {
   category: "cosplay", deal: "venta", title: "", description: "", price: "", acceptsTrade: false, condition: "usado",
-  size: "", measurements: "", series: "", characterName: "", delivery: "ambos", images: [] as string[],
+  size: "", measurements: "", series: "", characterName: "", delivery: "ambos", images: [] as string[], stock: "1",
 };
 
 export function ListingForm({ id }: { id?: number }) {
@@ -135,7 +135,7 @@ export function ListingForm({ id }: { id?: number }) {
     setF({
       category: l.category, deal: l.deal, title: l.title, description: l.description, price: l.priceCents != null ? String(l.priceCents / 100) : "",
       acceptsTrade: l.acceptsTrade, condition: l.condition ?? "usado", size: l.size ?? "", measurements: l.measurements ?? "",
-      series: l.series ?? "", characterName: l.characterName ?? "", delivery: l.delivery, images: l.images,
+      series: l.series ?? "", characterName: l.characterName ?? "", delivery: l.delivery, images: l.images, stock: String(Math.max(1, l.stock)),
     });
   }, [existing.data, existing.isFetching]);
 
@@ -153,6 +153,7 @@ export function ListingForm({ id }: { id?: number }) {
   const up = <K extends keyof typeof f>(k: K) => (v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
   const group = (kind: string) => CATEGORIES.filter((c) => c.kind === kind).map((c) => ({ value: c.id, label: c.label }));
 
+  const stocked = hasStock(isService ? "service" : "product", f.deal);
   const submit = () => {
     setError("");
     if (!isService && f.images.length === 0) { setError("Agrega al menos una foto del artículo."); return; }
@@ -162,6 +163,7 @@ export function ListingForm({ id }: { id?: number }) {
       size: WEARABLE.includes(f.category) ? f.size : "", measurements: WEARABLE.includes(f.category) ? f.measurements : "",
       series: FANDOM.includes(f.category) ? f.series : "", characterName: FANDOM.includes(f.category) ? f.characterName : "",
       delivery: f.delivery as never, images: f.images,
+      stock: stocked ? Math.max(1, Number(f.stock) || 1) : undefined,
     });
   };
 
@@ -181,6 +183,11 @@ export function ListingForm({ id }: { id?: number }) {
       <Field label={isService || f.deal === "encargo" ? "Precio desde, en dólares" : f.deal === "alquiler" ? "Precio por evento, en dólares" : "Precio en dólares"} hint="Déjalo vacío si es a convenir.">
         <Input value={f.price} onChangeText={(v) => up("price")(v.replace(/[^\d.]/g, ""))} keyboardType="decimal-pad" placeholder="45" accessibilityLabel="Precio en dólares" />
       </Field>
+      {stocked && (
+        <Field label="Cantidad disponible" hint="Si tienes varias iguales, pon cuántas. Se descuentan solas con cada venta.">
+          <Input value={f.stock} onChangeText={(v) => up("stock")(v.replace(/\D/g, "").slice(0, 4))} keyboardType="number-pad" accessibilityLabel="Cantidad disponible" />
+        </Field>
+      )}
       {!isService && <Field label="Condición"><Select title="Condición" value={f.condition} onChange={up("condition")} options={CONDITIONS.map((c) => ({ value: c.id, label: c.label }))} /></Field>}
       {WEARABLE.includes(f.category) && (
         <>
