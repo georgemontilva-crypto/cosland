@@ -7,42 +7,47 @@ export const soundOn = () => { try { return localStorage.getItem(KEY) !== "0"; }
 export const setSoundOn = (on: boolean) => { try { localStorage.setItem(KEY, on ? "1" : "0"); } catch { /* vale solo para esta visita */ } };
 
 export type WelcomeSound = {
-  ready: Promise<void>;                          // el audio ya está descargado
-  play: (onStart: (ms: number) => void) => void; // intenta sonar; avisa cuánto dura cuando de verdad empieza
-  tap: () => boolean;                            // toque sobre el logo: true si con ese toque empezó la voz
-  stop: () => void;                              // el logo se va: la voz no suena fuera de él
+  ready: Promise<void>;                                       // el audio ya está descargado
+  play: (onStart: (ms: number) => void) => Promise<boolean>;  // intento automático: true si de verdad empezó a sonar
+  tap: (onStart: (ms: number) => void, always?: boolean) => boolean; // dentro de un toque: true si con ese toque arranca la voz
+  stop: () => void;                                           // el logo se va: la voz no suena fuera de él
 };
 
 // La voz solo suena mientras el logo está en pantalla.
-// Los navegadores no dejan sonar nada hasta que la persona toca la página: se intenta al empezar
-// la animación y, si el navegador lo bloquea, un toque sobre el logo la enciende. Si no, silencio.
+// Los navegadores (sobre todo en iPhone) no dejan sonar nada hasta que la persona toca la página.
+// Por eso primero se intenta sola y, si el navegador la bloquea, la entrada espera un toque:
+// con ese toque el sonido siempre arranca, a la vez que el logo.
 export function welcomeSound(): WelcomeSound | null {
   if (!soundOn() || typeof Audio === "undefined") return null;
   const audio = new Audio();
   audio.volume = 0.9;
+  let loaded = false, over = false, started = false, blocked = false, pending = false;
   // Se descarga completo antes de empezar para que arranque al instante, también en iPhone
   const ready = fetch(SRC).then((r) => (r.ok ? r.blob() : Promise.reject()))
-    .then((b) => { audio.src = URL.createObjectURL(b); loaded = true; })
+    .then((b) => { if (!audio.src) audio.src = URL.createObjectURL(b); loaded = true; })
     .catch(() => {});
-  let loaded = false, over = false, started = false, blocked = false;
-  let onStart: (ms: number) => void = () => {};
   const duration = () => (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration * 1000 : FALLBACK_MS);
-  const attempt = () => audio.play().then(() => {
-    if (over) { audio.pause(); return; }         // llegó tarde: el logo ya se fue
-    started = true; blocked = false;
-    onStart(duration() - audio.currentTime * 1000);
-  });
+  const attempt = (onStart: (ms: number) => void) => {
+    pending = true;
+    return audio.play().then(() => {
+      pending = false;
+      if (over) { audio.pause(); return false; }  // llegó tarde: el logo ya se fue
+      started = true; blocked = false;
+      onStart(duration() - audio.currentTime * 1000);
+      return true;
+    }, () => { pending = false; if (!over && !started) blocked = true; return false; });
+  };
   return {
     ready,
-    play(cb) {
-      if (!loaded) { over = true; return; } // con conexión lenta no llegó a tiempo: la entrada va en silencio
-      onStart = cb;
-      attempt().catch(() => { if (!over && !started) blocked = true; });
+    play(onStart) {
+      if (!loaded || over || started) return Promise.resolve(false);
+      return attempt(onStart);
     },
-    tap() {
-      if (over || started || !blocked) return false;
-      blocked = false;
-      attempt().catch(() => {});
+    tap(onStart, always = false) {
+      if (over || started || pending) return false;
+      if (!always && !blocked) return false;
+      if (!audio.src) audio.src = SRC; // conexión lenta: no esperó la descarga, se reproduce directo
+      attempt(onStart);
       return true;
     },
     stop() {

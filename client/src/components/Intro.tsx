@@ -1,4 +1,5 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { Volume2 } from "lucide-react";
 import P from "@/lib/logoParts.json";
 import { welcomeSound } from "@/lib/sound";
 
@@ -20,47 +21,88 @@ function shouldPlay() {
   return true;
 }
 
+// Dónde la entrada espera un toque si el navegador bloquea el sonido: al abrir Cosland por la portada
+// o como app instalada. Quien llega por el enlace de una publicación o vitrina entra directo.
+function gateHere() {
+  try {
+    const nav = navigator as Navigator & { standalone?: boolean };
+    return location.pathname === "/" || window.matchMedia("(display-mode: standalone)").matches || nav.standalone === true;
+  } catch { return false; }
+}
+
 export default function Intro() {
-  const [phase, setPhase] = useState<"wait" | "play" | "leave" | "done">(() => (shouldPlay() ? "wait" : "done"));
+  const [phase, setPhase] = useState<"wait" | "gate" | "play" | "leave" | "done">(() => (shouldPlay() ? "wait" : "done"));
   const [sound] = useState(() => (shouldPlay() ? welcomeSound() : null));
+  const [fromGate, setFromGate] = useState(false);
+  const t0 = useRef(0), voiceEnd = useRef(0), timer = useRef<ReturnType<typeof setTimeout>>();
+  const now = useRef(phase); now.current = phase;
+
+  // El logo se va cuando termina su animación o, si la voz suena, cuando termina de hablar
+  const plan = () => {
+    if (!t0.current) return;
+    clearTimeout(timer.current);
+    const leaveAt = Math.max(t0.current + PLAY_MS, voiceEnd.current - 80);
+    timer.current = setTimeout(() => setPhase("leave"), Math.max(0, leaveAt - performance.now()));
+  };
+  // La voz empezó de verdad: el logo arranca con ella, venga de donde venga
+  const onVoice = (ms: number) => {
+    voiceEnd.current = performance.now() + Math.min(ms, MAX_VOICE_MS);
+    setPhase((p) => (p === "wait" || p === "gate" ? "play" : p));
+    plan();
+  };
 
   // Espera a que las piezas estén cargadas para que nada aparezca a destiempo
   useEffect(() => {
     if (phase !== "wait") return;
-    let live = true;
-    const start = () => { if (live) setPhase("play"); };
+    let live = true, moved = false;
+    const gate = Boolean(sound) && gateHere();
+    const go = (next: "play" | "gate") => { if (live && !moved) { moved = true; if (next === "gate") setFromGate(true); setPhase((p) => (p === "wait" ? next : p)); } };
     const loads = FILES.map((src) => new Promise<void>((ok) => { const i = new Image(); i.onload = i.onerror = () => ok(); i.src = src; }));
-    Promise.all([...loads, sound?.ready]).then(start);
-    const t = setTimeout(start, 1500);
+    Promise.all([...loads, sound?.ready]).then(async () => {
+      // Conexión lenta: ya estaba esperando el toque; si el navegador deja, arranca sola en cuanto baja el audio
+      if (moved) { if (gate && now.current === "gate") sound?.play(onVoice); return; }
+      if (!live) return;
+      if (!sound) return go("play");
+      const sounding = await sound.play(onVoice); // si el navegador deja, suena sola con el logo
+      if (!sounding) go(gate ? "gate" : "play");
+    });
+    const t = setTimeout(() => go(gate ? "gate" : "play"), 1500);
     return () => { live = false; clearTimeout(t); };
-  }, [phase]);
+  }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (phase === "play") {
       try { sessionStorage.setItem(KEY, "1"); } catch { /* no pasa nada */ }
-      const t0 = performance.now();
-      let t = setTimeout(() => setPhase("leave"), PLAY_MS);
-      // Si la voz suena, el logo se queda hasta que termina de hablar
-      sound?.play((ms) => {
-        const until = Math.max(PLAY_MS, performance.now() - t0 + Math.min(ms, MAX_VOICE_MS) - 80);
-        clearTimeout(t);
-        t = setTimeout(() => setPhase("leave"), until - (performance.now() - t0));
-      });
-      return () => clearTimeout(t);
+      t0.current = performance.now();
+      plan();
+      return () => clearTimeout(timer.current);
     }
     if (phase === "leave") {
       sound?.stop(); // la voz nunca suena con el logo ya fuera
       const t = setTimeout(() => setPhase("done"), LEAVE_MS);
       return () => clearTimeout(t);
     }
-  }, [phase]);
+  }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Un toque salta la entrada; si el navegador tenía la voz bloqueada, ese toque la enciende
+  // En la espera, el toque enciende la voz y arranca el logo a la vez.
+  // Con el logo ya andando, un toque lo salta; si la voz estaba bloqueada, ese toque la enciende.
   const onTap = () => {
+    if (phase === "gate") { sound?.tap(onVoice, true); setPhase("play"); return; }
     if (phase !== "play") return;
-    if (sound?.tap()) return;
+    if (sound?.tap(onVoice)) return;
     setPhase("leave");
   };
+  // Con teclado: Enter o espacio entran igual que el toque
+  useEffect(() => {
+    if (phase !== "gate") return;
+    const key = (e: KeyboardEvent) => {
+      if ((e.key !== "Enter" && e.key !== " ") || e.target instanceof HTMLButtonElement) return;
+      e.preventDefault(); sound?.tap(onVoice, true); setPhase("play");
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  const enterSilent = (e: MouseEvent) => { e.stopPropagation(); sound?.stop(); setPhase("play"); };
 
   if (phase === "done") return null;
   const eye = (b: Box, file: string) => (
@@ -72,10 +114,17 @@ export default function Intro() {
 
   return (
     <div
-      className={`intro ${phase === "play" ? "intro-go" : ""} ${phase === "leave" ? "intro-go intro-leave" : ""}`}
+      className={`intro ${phase === "gate" ? "intro-gate" : ""} ${fromGate ? "intro-from-gate" : ""} ${phase === "play" ? "intro-go" : ""} ${phase === "leave" ? "intro-go intro-leave" : ""}`}
+      style={{ "--cat-x": `${50 - (P.gato.x + P.gato.w / 2)}%` } as CSSProperties}
       onClick={onTap}
       role="presentation"
     >
+      {phase === "gate" && (
+        <div className="intro-enter">
+          <button type="button" className="btn btn-ink intro-enter-btn"><Volume2 size={19} />Entrar</button>
+          <button type="button" className="intro-enter-mute" onClick={enterSilent}>Entrar sin sonido</button>
+        </div>
+      )}
       <div className="intro-logo" style={{ aspectRatio: String(P.ratio) }} role="img" aria-label="Cosland">
         <div className="intro-cat absolute inset-0">
           <img src="/logo/gato.png" alt="" className="absolute" style={at(P.gato)} />

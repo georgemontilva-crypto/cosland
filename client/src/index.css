@@ -180,6 +180,30 @@
 .intro-go .intro-letter { animation: intro-letter 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
 .intro-go .intro-kana { animation: intro-kana 0.5s ease-out 1s both; }
 
+/* Espera del toque (cuando el navegador no deja sonar sola la voz): el gato al centro, despierto, y el botón de entrar */
+.intro-gate { cursor: pointer; }
+.intro-gate .intro-cat { opacity: 1; animation: intro-wait 1.9s ease-in-out infinite; }
+.intro-gate .intro-eye-open { animation: intro-wait-blink 3.4s ease-in-out infinite; }
+.intro-from-gate.intro-go .intro-cat { animation: intro-cat-home 0.6s cubic-bezier(0.3, 1.4, 0.5, 1) both; }
+.intro-enter {
+  position: absolute; left: 0; right: 0; top: calc(50% + min(17vw, 7rem)); display: grid; justify-items: center; gap: 0.9rem;
+  padding: 0 1.25rem; animation: pop 0.25s ease both;
+}
+.intro-enter-btn { min-height: 3.4rem; padding-inline: 2.2rem; font-size: 1.1rem; }
+.intro-enter-mute { font-weight: 700; color: var(--color-cocoa); text-decoration: underline; text-underline-offset: 4px; padding: 0.5rem 0.75rem; border-radius: 999px; }
+@keyframes intro-wait {
+  0%, 100% { transform: translateX(var(--cat-x)); }
+  50% { transform: translateX(var(--cat-x)) translateY(-3.5%); }
+}
+@keyframes intro-wait-blink {
+  0%, 44%, 52%, 100% { transform: translate(-50%, -50%) scale(1); }
+  48% { transform: translate(-50%, -50%) scale(1.05, 0.08); }
+}
+@keyframes intro-cat-home {
+  from { opacity: 1; transform: translateX(var(--cat-x)) scale(1.08); }
+  to { opacity: 1; transform: none; }
+}
+
 /* Ojos: abiertos al aparecer, dos pestañeos y luego la sonrisa del logo */
 .intro-eye-open {
   position: absolute; top: 50%; left: 50%; height: 105%; aspect-ratio: 1; border-radius: 50%;
