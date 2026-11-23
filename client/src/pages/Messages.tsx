@@ -25,7 +25,7 @@ function Thread({ id }: { id: number }) {
         utils.chat.thread.setData({ id }, {
           ...prev,
           messages: [...prev.messages, {
-            id: -Date.now(), senderId: prev.me, body: v.body, offerCents: v.offer != null ? Math.round(v.offer * 100) : null, createdAt: new Date().toISOString(),
+            id: -Date.now(), senderId: prev.me, body: v.body, offerCents: v.offer != null ? Math.round(v.offer * 100) : null, imageUrl: null, createdAt: new Date().toISOString(),
             listingId: null, listingTitle: null, listingImages: null, listingPrice: null, listingDeal: null,
           }],
         });
@@ -70,6 +70,11 @@ function Thread({ id }: { id: number }) {
               <div className={`px-4 py-2.5 rounded-[1.4rem] border-[1.5px] border-ink whitespace-pre-line break-words ${mine ? "bg-ink text-cream rounded-br-md" : "bg-paper rounded-bl-md"}`}>
                 {m.offerCents != null && <p className={`font-extrabold text-lg ${mine ? "text-yuzu" : ""}`}>Oferta: {formatPrice(m.offerCents)}</p>}
                 {m.body}
+                {m.imageUrl && (
+                  <a href={m.imageUrl} target="_blank" rel="noopener noreferrer" className="block mt-2 -mx-1.5 mb-0.5" aria-label="Abrir la imagen en grande">
+                    <img src={m.imageUrl} alt="Imagen enviada en el chat" loading="lazy" width={224} height={288} className="rounded-2xl w-56 max-w-full h-72 object-cover border-[1.5px] border-ink/20 bg-cream" />
+                  </a>
+                )}
               </div>
               <p className={`text-xs text-cocoa mt-1 ${mine ? "text-right" : ""}`}>{timeAgo(m.createdAt)}</p>
             </div>

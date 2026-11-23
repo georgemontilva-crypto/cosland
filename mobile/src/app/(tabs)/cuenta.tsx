@@ -11,6 +11,7 @@ import { BORDER, C } from "@/lib/theme";
 import { Awning, Avatar, Btn, Empty, H1, H2, Loading, Photo, Sheet, T, Tag, panel, soft, useToast } from "@/ui/core";
 import { PAD } from "@/ui/cards";
 import FollowersSheet from "@/ui/FollowersSheet";
+import { SupportSheet, useSupport, type Owed } from "@/ui/Support";
 import { SOUND_KEY, playWelcome } from "@/ui/Intro";
 
 const STATUS: Record<string, { label: string; bg: string }> = {
@@ -37,12 +38,25 @@ export default function Account() {
   const [removing, setRemoving] = useState<null | { id: number; title: string }>(null);
   const [followers, setFollowers] = useState(false);
   const sellOne = trpc.listing.sellOne.useMutation({
-    onSuccess: (r) => { utils.listing.invalidate(); utils.shop.invalidate(); toast(r.sold ? "Marcada como vendida" : `Anotado. Te quedan ${r.stock}.`); },
+    onSuccess: (r, v) => {
+      utils.listing.invalidate(); utils.shop.invalidate(); utils.support.invalidate(); toast(r.sold ? "Marcada como vendida" : `Anotado. Te quedan ${r.stock}.`);
+      if (r.contributionId) setOwed({ id: r.contributionId, title: mine.data?.find((l) => l.id === v.id)?.title });
+    },
   });
   // La voz que acompaña al logo al abrir la app
   const [sound, setSound] = useState(() => getFlag(SOUND_KEY) !== "0");
   const toggleSound = () => { const next = !sound; setSound(next); setFlag(SOUND_KEY, next ? "1" : "0"); if (next) playWelcome(); };
-  const setStatus = trpc.listing.setStatus.useMutation({ onSuccess: () => { utils.listing.invalidate(); utils.shop.invalidate(); setRemoving(null); toast("Publicación actualizada"); } });
+  const setStatus = trpc.listing.setStatus.useMutation({
+    onSuccess: (r, v) => {
+      utils.listing.invalidate(); utils.shop.invalidate(); utils.support.invalidate(); setRemoving(null); toast("Publicación actualizada");
+      if (r.contributionId) setOwed({ id: r.contributionId, title: mine.data?.find((l) => l.id === v.id)?.title });
+    },
+  });
+  // Aportes a Cosland que quedaron por enviar
+  const support = useSupport();
+  const dues = trpc.support.mine.useQuery(undefined, { enabled: Boolean(me?.shop) && Boolean(support?.enabled) });
+  const pendingDues = dues.data?.filter((c) => c.status === "pending") ?? [];
+  const [owed, setOwed] = useState<Owed | null>(null);
   const items = mine.data ?? [];
   const shop = me?.shop;
 
@@ -105,6 +119,18 @@ export default function Account() {
               </View>
             </View>
 
+            {pendingDues.length > 0 && (
+              <View style={{ backgroundColor: "rgba(205,228,190,0.55)", borderWidth: BORDER, borderColor: C.ink, borderRadius: 24, padding: 16, gap: 10 }}>
+                <T w="black" size={17}>Tu aporte a Cosland</T>
+                {pendingDues.slice(0, 4).map((c) => (
+                  <View key={c.id} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <T w="bold" numberOfLines={1} style={{ flex: 1 }}>{c.listingTitle ?? "Aporte"}</T>
+                    <Btn small kind="ink" label={`Enviar ${formatPrice(c.amountCents)}`} onPress={() => setOwed({ id: c.id, title: c.listingTitle, amountCents: c.amountCents })} />
+                  </View>
+                ))}
+              </View>
+            )}
+
             <H2 style={{ marginTop: 8 }}>Mis publicaciones</H2>
             {mine.isLoading ? <Loading /> : !items.length ? (
               <Empty title="Tu vitrina está lista para su primer artículo" text="Un cosplay que ya no usas, una peluca, una figura o el servicio que ofreces." action={<Btn label="Publicar ahora" kind="sakura" onPress={() => router.push("/publicar")} />} />
@@ -156,6 +182,7 @@ export default function Account() {
       </ScrollView>
 
       {shop && <FollowersSheet open={followers} onClose={() => setFollowers(false)} shopId={shop.id} mine />}
+      <SupportSheet owed={owed} onClose={() => setOwed(null)} />
       <Sheet open={Boolean(removing)} onClose={() => setRemoving(null)} title="Eliminar publicación">
         <View style={{ gap: 16 }}>
           <T size={16}>Vas a eliminar “{removing?.title}”. No se puede deshacer.</T>

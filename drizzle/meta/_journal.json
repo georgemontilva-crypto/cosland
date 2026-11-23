@@ -36,6 +36,13 @@
       "when": 1795411147863,
       "tag": "0004_classy_grandmaster",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1795414449530,
+      "tag": "0005_fine_rick_jones",
+      "breakpoints": true
     }
   ]
 }

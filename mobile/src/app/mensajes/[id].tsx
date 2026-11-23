@@ -32,7 +32,7 @@ export default function Thread() {
         utils.chat.thread.setData({ id }, {
           ...prev,
           messages: [...prev.messages, {
-            id: -Date.now(), senderId: prev.me, body: v.body, offerCents: v.offer != null ? Math.round(v.offer * 100) : null, createdAt: new Date().toISOString(),
+            id: -Date.now(), senderId: prev.me, body: v.body, offerCents: v.offer != null ? Math.round(v.offer * 100) : null, imageUrl: null, createdAt: new Date().toISOString(),
             listingId: null, listingTitle: null, listingImages: null, listingPrice: null, listingDeal: null,
           }],
         });
@@ -81,6 +81,11 @@ export default function Thread() {
                 <View style={[{ paddingHorizontal: 15, paddingVertical: 10, borderRadius: 22, borderWidth: BORDER, borderColor: C.ink }, mine ? { backgroundColor: C.ink, borderBottomRightRadius: 6 } : { backgroundColor: C.paper, borderBottomLeftRadius: 6 }]}>
                   {m.offerCents != null && <T w="black" size={18} color={mine ? C.yuzu : C.ink}>Oferta: {formatPrice(m.offerCents)}</T>}
                   <T color={mine ? C.cream : C.ink}>{m.body}</T>
+                  {img(m.imageUrl) ? (
+                    <Pressable accessibilityRole="imagebutton" accessibilityLabel="Abrir la imagen en grande" onPress={() => openExternal(img(m.imageUrl)!)} style={{ marginTop: 8 }}>
+                      <Image source={{ uri: img(m.imageUrl)! }} style={{ width: 220, height: 280, borderRadius: 16, backgroundColor: C.cream }} contentFit="cover" />
+                    </Pressable>
+                  ) : null}
                 </View>
                 <T size={11.5} color={C.cocoa} style={{ marginTop: 3, textAlign: mine ? "right" : "left" }}>{timeAgo(m.createdAt)}</T>
               </View>

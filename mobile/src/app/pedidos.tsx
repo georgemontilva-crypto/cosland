@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { router } from "expo-router";
-import { MessageCircle, Star } from "lucide-react-native";
+import { MessageCircle, Star, HeartHandshake } from "lucide-react-native";
 import { formatPrice, orderStatusLabel } from "@shared/catalog";
 import { errText, img, trpc, timeAgo, type Out } from "@/lib/api";
 import { openExternal } from "@/lib/actions";
@@ -9,6 +9,7 @@ import { requireLogin, useSession } from "@/lib/session";
 import { BORDER, C } from "@/lib/theme";
 import { Btn, Chip, Empty, Loading, Photo, Screen, Sheet, T, Tag, soft, useToast } from "@/ui/core";
 import { PayForm, ReviewSheet } from "@/ui/Checkout";
+import { SupportSheet, type Owed } from "@/ui/Support";
 
 type Order = Out["order"]["mine"]["buying"][number];
 type Action = "accept" | "reject" | "cancel" | "confirmPay" | "deliver" | "receive";
@@ -42,7 +43,7 @@ function next(o: Order, role: Role): string {
   return "Pedido cancelado.";
 }
 
-function Row({ o, role, busy, act, onPay, onReview }: { o: Order; role: Role; busy: boolean; act: (a: Action) => void; onPay: () => void; onReview: () => void }) {
+function Row({ o, role, busy, act, onPay, onReview, onDue }: { o: Order; role: Role; busy: boolean; act: (a: Action) => void; onPay: () => void; onReview: () => void; onDue: () => void }) {
   const total = o.unitPriceCents != null ? formatPrice(o.unitPriceCents * o.quantity, o.deal ?? "venta") : "A convenir";
   const st = orderState(o);
   const seller = role === "seller", open = o.status === "accepted";
@@ -72,6 +73,7 @@ function Row({ o, role, busy, act, onPay, onReview }: { o: Order; role: Role; bu
           {seller && o.status === "pending" && <Btn small label="Rechazar" disabled={busy} onPress={() => act("reject")} />}
           {!seller && o.status === "delivered" && <Btn small kind="ink" label="Ya lo recibí" disabled={busy} onPress={() => act("receive")} />}
           {!seller && o.status === "completed" && !o.reviewed && <Btn small kind="yuzu" label="Dejar reseña" icon={<Star size={14} color={C.ink} />} onPress={onReview} />}
+          {seller && o.due ? <Btn small kind="matcha" label={`Enviar ${formatPrice(o.due.amountCents)} a Cosland`} icon={<HeartHandshake size={14} color={C.ink} />} onPress={onDue} /> : null}
           {o.conversationId ? <Btn small label="Chat" icon={<MessageCircle size={14} color={C.ink} />} onPress={() => router.push(`/mensajes/${o.conversationId}`)} /> : null}
           {canCancel && <Btn small kind="ghost" label="Cancelar" disabled={busy} onPress={() => act("cancel")} />}
         </View>
@@ -89,15 +91,19 @@ export default function Orders() {
   const [asking, setAsking] = useState<null | { id: number; action: Action; title: string }>(null);
   const [paying, setPaying] = useState<number | null>(null);
   const [reviewing, setReviewing] = useState<null | { shopId: number; shopName: string }>(null);
+  const [owed, setOwed] = useState<Owed | null>(null);
   // Al abrir: si vende y tiene algo por atender, empieza en ventas; si no, en compras. Luego no se mueve sola.
   useEffect(() => {
     if (tab === null && q.data) setTab(q.data.selling.some((o) => o.status === "pending" || o.status === "accepted") ? "selling" : "buying");
   }, [q.data, tab]);
   const act = trpc.order.act.useMutation({
     onSuccess: (r, v) => {
-      utils.order.invalidate(); utils.auth.me.invalidate(); utils.listing.invalidate(); utils.shop.invalidate(); setAsking(null);
-      const said: Record<Action, string> = { accept: "Pedido aceptado", reject: "Pedido rechazado", cancel: "Pedido cancelado", confirmPay: "Pago confirmado", deliver: r.contributionId ? "Marcado como entregado. Tu aporte a Cosland quedó anotado en tu vitrina." : "Marcado como entregado", receive: "¡Listo! Gracias por confirmar" };
+      utils.order.invalidate(); utils.auth.me.invalidate(); utils.listing.invalidate(); utils.shop.invalidate(); utils.support.invalidate(); setAsking(null);
+      const said: Record<Action, string> = { accept: "Pedido aceptado", reject: "Pedido rechazado", cancel: "Pedido cancelado", confirmPay: "Pago confirmado", deliver: "Marcado como entregado", receive: "¡Listo! Gracias por confirmar" };
       toast(said[v.action]);
+      // Con el pago en mano, el vendedor ve a dónde enviar el dólar de Cosland
+      const sold = q.data?.selling.find((o) => o.id === v.id);
+      if (r.contributionId) setOwed({ id: r.contributionId, title: sold?.title, amountCents: 100 * (sold?.quantity ?? 1) });
       // Al confirmar que llegó, se pide la reseña de una vez
       const got = q.data?.buying.find((o) => o.id === v.id);
       if (v.action === "receive" && got && !got.reviewed) setReviewing({ shopId: got.shopId, shopName: got.shopName });
@@ -131,7 +137,7 @@ export default function Orders() {
       ) : (
         <View style={{ gap: 10 }}>
           {list.map((o) => <Row key={o.id} o={o} role={current === "selling" ? "seller" : "buyer"} busy={act.isPending} act={(a) => run(o, a)}
-            onPay={() => setPaying(o.id)} onReview={() => setReviewing({ shopId: o.shopId, shopName: o.shopName })} />)}
+            onPay={() => setPaying(o.id)} onDue={() => o.due && setOwed({ id: o.due.id, title: o.title, amountCents: o.due.amountCents })} onReview={() => setReviewing({ shopId: o.shopId, shopName: o.shopName })} />)}
         </View>
       )}
       <Sheet open={Boolean(asking)} onClose={() => setAsking(null)} title={asking?.action === "reject" ? "¿Rechazar este pedido?" : "¿Cancelar este pedido?"}>
@@ -149,6 +155,7 @@ export default function Orders() {
         ) : null}
       </Sheet>
       <ReviewSheet target={reviewing} onClose={() => setReviewing(null)} />
+      <SupportSheet owed={owed} onClose={() => setOwed(null)} />
     </Screen>
   );
 }

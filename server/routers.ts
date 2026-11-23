@@ -1,7 +1,7 @@
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { TRPCError } from "@trpc/server";
-import { and, or, eq, ne, like, desc, asc, sql, inArray, isNull, gte, lte, type SQL } from "drizzle-orm";
+import { and, or, eq, ne, like, desc, asc, sql, inArray, isNull, gte, lte, type SQL, isNotNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/mysql-core";
 import { db } from "./db";
 import { publish, touch, T } from "./realtime";
@@ -570,8 +570,8 @@ const listingRouter = router({
 });
 
 /* ───────── Mensajes ───────── */
-async function postMessage(convId: number, senderId: number, fromSeller: boolean, body: string, listingId?: number | null, offerCents?: number | null, silent = false) {
-  await db.insert(messages).values({ conversationId: convId, senderId, body, listingId: listingId ?? null, offerCents: offerCents ?? null });
+async function postMessage(convId: number, senderId: number, fromSeller: boolean, body: string, listingId?: number | null, offerCents?: number | null, silent = false, imageUrl?: string | null) {
+  await db.insert(messages).values({ conversationId: convId, senderId, body, listingId: listingId ?? null, offerCents: offerCents ?? null, imageUrl: imageUrl ?? null });
   await db.update(conversations).set({
     lastBody: body.slice(0, 200), lastAt: new Date(),
     ...(fromSeller ? { buyerUnread: sql`${conversations.buyerUnread} + 1` } : { sellerUnread: sql`${conversations.sellerUnread} + 1` }),
@@ -653,7 +653,7 @@ const chatRouter = router({
     if (!r || (!asSeller && r.conv.buyerId !== ctx.user.id)) throw fail("NOT_FOUND", "No encontramos esa conversación.");
     await db.update(conversations).set(asSeller ? { sellerUnread: 0 } : { buyerUnread: 0 }).where(eq(conversations.id, input.id));
     const rows = await db.select({
-      id: messages.id, senderId: messages.senderId, body: messages.body, offerCents: messages.offerCents, createdAt: messages.createdAt,
+      id: messages.id, senderId: messages.senderId, body: messages.body, offerCents: messages.offerCents, imageUrl: messages.imageUrl, createdAt: messages.createdAt,
       listingId: messages.listingId, listingTitle: listings.title, listingImages: listings.images, listingPrice: listings.priceCents, listingDeal: listings.deal,
     }).from(messages).leftJoin(listings, eq(listings.id, messages.listingId))
       .where(eq(messages.conversationId, input.id)).orderBy(desc(messages.id)).limit(200);
@@ -762,8 +762,15 @@ const orderRouter = router({
       .orderBy(desc(orders.id)).limit(200);
     // Qué reseñas ya dejó, para ofrecer la que falte
     const reviewed = new Set((await db.select({ shopId: reviews.shopId }).from(reviews).where(eq(reviews.authorId, ctx.user.id))).map((r) => r.shopId));
+    // Aportes a Cosland que el vendedor aún no ha enviado, por pedido
+    const dues = new Map<number, { id: number; amountCents: number }>();
+    if (shop) {
+      for (const c of await db.select({ id: contributions.id, orderId: contributions.orderId, amountCents: contributions.amountCents }).from(contributions)
+        .where(and(eq(contributions.shopId, shop.id), eq(contributions.status, "pending"), isNotNull(contributions.orderId)))) dues.set(c.orderId!, { id: c.id, amountCents: c.amountCents });
+    }
     const view = (asBuyer: boolean) => ({ buyerId, buyerName, images, payDetails, payMethodId, shopId, ...o }: (typeof rows)[number]) => ({
       ...o, shopId, image: images?.[0] ?? null, buyerName: buyerName.split(" ")[0],
+      due: asBuyer ? null : dues.get(o.id) ?? null,
       // Los datos para pagar solo se le muestran al comprador mientras el pedido sigue en curso
       payDetails: asBuyer && o.status === "accepted" && (o.payStatus === "unpaid" || o.payStatus === "reported") ? payDetails : null,
       reviewed: asBuyer ? reviewed.has(shopId) : false,
@@ -784,7 +791,10 @@ const orderRouter = router({
       if (row.o.status !== "accepted" || row.o.payStatus === "confirmed") throw fail("CONFLICT", "Ese pedido ya cambió. Mira cómo quedó.");
       if (!input.reference && !input.proofUrl) throw fail("BAD_REQUEST", "Pon el número de referencia o sube el comprobante.");
       await db.update(orders).set({ payStatus: "reported", payReference: input.reference, payProofUrl: input.proofUrl ?? null, paidAt: new Date() }).where(eq(orders.id, row.o.id));
-      if (row.o.conversationId) await postMessage(row.o.conversationId, ctx.user.id, false, `Ya pagué "${row.o.title}"${input.reference ? `. Referencia: ${input.reference}` : ""}.`, row.o.listingId, null, true);
+      if (row.o.conversationId) {
+        const said = `Ya pagué "${row.o.title}"${input.reference ? `. Referencia: ${input.reference}` : ""}.${input.proofUrl ? " Aquí está el comprobante." : ""}`;
+        await postMessage(row.o.conversationId, ctx.user.id, false, said, row.o.listingId, null, true, input.proofUrl ?? null);
+      }
       publish([row.ownerId], "order", { id: row.o.id, text: `${ctx.user.name.split(" ")[0]} avisó que ya pagó: ${row.o.title}` });
       touch(T.admin);
       return { ok: true };
@@ -806,6 +816,14 @@ const orderRouter = router({
         if (!r.affectedRows) throw stale(); // otra pestaña o la otra persona se adelantó
       };
       let say = "", note = "", contributionId: number | null = null;
+      // El dólar para Cosland queda pendiente en cuanto el vendedor tiene el pago: al confirmarlo o, si paga al recibir, al entregar
+      const owe = async (): Promise<number | null> => {
+        if (!l?.supportsApp || !(await getSettings()).enabled) return null;
+        const [had] = await db.select({ id: contributions.id, status: contributions.status }).from(contributions).where(eq(contributions.orderId, o.id)).limit(1);
+        if (had) return had.status === "pending" ? had.id : null;
+        const [r] = await db.insert(contributions).values({ shopId: o.shopId, listingId: o.listingId, orderId: o.id, amountCents: SUPPORT_CENTS * o.quantity });
+        return r.insertId;
+      };
       const who = isSeller ? row.shopName : ctx.user.name.split(" ")[0];
 
       if (input.action === "accept" && isSeller) {
@@ -828,18 +846,17 @@ const orderRouter = router({
         if (isSeller && o.status === "pending") throw stale();
         await move([o.status], "cancelled");
         if (o.status === "accepted") await releaseStock(o.listingId, o.quantity);
+        // Sin venta no hay aporte pendiente
+        await db.delete(contributions).where(and(eq(contributions.orderId, o.id), eq(contributions.status, "pending")));
         say = `Cancelé el pedido de "${o.title}".`; note = `${who} canceló el pedido: ${o.title}`;
       } else if (input.action === "confirmPay" && isSeller) {
         if (o.status !== "accepted" || o.payStatus === "confirmed") throw stale();
         await db.update(orders).set({ payStatus: "confirmed", paidAt: o.paidAt ?? new Date() }).where(eq(orders.id, o.id));
+        contributionId = await owe();
         say = `Confirmé tu pago de "${o.title}".`; note = `${who} confirmó tu pago`;
       } else if (input.action === "deliver" && isSeller) {
         await move(["accepted"], "delivered", { deliveredAt: new Date(), ...(o.payStatus === "on_delivery" ? {} : { payStatus: "confirmed" as const }) });
-        // La venta se cerró: si la publicación llevaba el dólar para Cosland, queda el aporte de este pedido
-        if (l?.supportsApp && (await getSettings()).enabled) {
-          const [r] = await db.insert(contributions).values({ shopId: o.shopId, listingId: o.listingId, orderId: o.id, amountCents: SUPPORT_CENTS * o.quantity });
-          contributionId = r.insertId;
-        }
+        contributionId = await owe();
         say = `Marqué como entregado tu pedido de "${o.title}". Cuando lo tengas, confírmalo en Pedidos.`; note = `${who} marcó tu pedido como entregado`;
       } else if (input.action === "receive" && isBuyer) {
         await move(["delivered"], "completed");
@@ -849,7 +866,7 @@ const orderRouter = router({
       // El paso queda escrito en el chat, y a la otra persona le llega un solo aviso
       if (o.conversationId) await postMessage(o.conversationId, ctx.user.id, isSeller, say, o.listingId, null, true);
       publish([isSeller ? o.buyerId : row.ownerId], "order", { id: o.id, text: note });
-      touch(T.listing(o.listingId), T.shop(o.shopId), T.shops, T.feed, T.admin, contributionId ? T.support : null);
+      touch(T.listing(o.listingId), T.shop(o.shopId), T.shops, T.feed, T.admin, T.support);
       return { ok: true, contributionId, shopId: o.shopId };
     }),
 });

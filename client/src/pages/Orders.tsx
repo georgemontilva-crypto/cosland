@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { MessageCircle, Star } from "lucide-react";
+import { MessageCircle, Star, HeartHandshake } from "lucide-react";
 import { formatPrice, orderStatusLabel } from "@shared/catalog";
 import { trpc, timeAgo, type Out } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
@@ -41,7 +41,7 @@ function next(o: Order, role: Role): string {
   return "Pedido cancelado.";
 }
 
-function OrderRow({ o, role, busy, act, onPay, onReview }: { o: Order; role: Role; busy: boolean; act: (a: Action, confirmText?: string) => void; onPay: () => void; onReview: () => void }) {
+function OrderRow({ o, role, busy, act, onPay, onReview, onDue }: { o: Order; role: Role; busy: boolean; act: (a: Action, confirmText?: string) => void; onPay: () => void; onReview: () => void; onDue: () => void }) {
   const total = o.unitPriceCents != null ? formatPrice(o.unitPriceCents * o.quantity, o.deal ?? "venta") : "A convenir";
   const st = orderState(o);
   const seller = role === "seller", open = o.status === "accepted";
@@ -70,6 +70,7 @@ function OrderRow({ o, role, busy, act, onPay, onReview }: { o: Order; role: Rol
           {seller && o.status === "pending" && <button className="btn btn-sm" disabled={busy} onClick={() => act("reject", "¿Rechazar este pedido?")}>Rechazar</button>}
           {!seller && o.status === "delivered" && <button className="btn btn-sm btn-ink" disabled={busy} onClick={() => act("receive")}>Ya lo recibí</button>}
           {!seller && o.status === "completed" && !o.reviewed && <button className="btn btn-sm btn-yuzu" onClick={onReview}><Star size={15} />Dejar reseña</button>}
+          {seller && o.due && <button className="btn btn-sm btn-matcha" onClick={onDue}><HeartHandshake size={15} />Enviar {formatPrice(o.due.amountCents)} a Cosland</button>}
           {o.conversationId && <Link href={`/mensajes/${o.conversationId}`} className="btn btn-sm"><MessageCircle size={15} />Chat</Link>}
           {canCancel && <button className="btn btn-sm btn-ghost !text-berry" disabled={busy} onClick={() => act("cancel", "¿Cancelar este pedido?")}>Cancelar</button>}
         </div>
@@ -133,7 +134,7 @@ export default function Orders() {
           <ul className="grid gap-3">
             {list.map((o) => (
               <OrderRow key={o.id} o={o} role={current === "selling" ? "seller" : "buyer"} busy={act.isPending}
-                onPay={() => setPaying(o.id)} onReview={() => setReviewing({ shopId: o.shopId, shopName: o.shopName })}
+                onPay={() => setPaying(o.id)} onDue={() => o.due && setOwed({ id: o.due.id, title: o.title, amountCents: o.due.amountCents })} onReview={() => setReviewing({ shopId: o.shopId, shopName: o.shopName })}
                 act={(action, confirmText) => { if (!confirmText || confirm(confirmText)) act.mutate({ id: o.id, action }); }} />
             ))}
           </ul>

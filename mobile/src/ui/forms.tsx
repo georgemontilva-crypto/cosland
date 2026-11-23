@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { router } from "expo-router";
-import { ACCENTS, CATEGORIES, CONDITIONS, COUNTRIES, DEALS, DELIVERY, SHOP_KINDS, SIZES, categoryOf, slugify, hasStock } from "@shared/catalog";
+import { ACCENTS, CATEGORIES, CONDITIONS, COUNTRIES, DEALS, DELIVERY, SHOP_KINDS, SIZES, categoryOf, formatPrice, slugify, hasStock } from "@shared/catalog";
 import { errText, trpc } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { BORDER, C } from "@/lib/theme";
 import { Awning, Avatar, Btn, Check2, Empty, Field, Input, Loading, Select, T, panel, soft, useToast } from "./core";
 import { PhotosInput, SinglePhoto } from "./photos";
+import { useSupport } from "./Support";
 
 const Err = ({ text }: { text: string }) => text ? <View style={{ backgroundColor: "rgba(246,195,207,0.7)", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 }} accessibilityRole="alert"><T w="bold" size={14}>{text}</T></View> : null;
 
@@ -113,7 +114,7 @@ const WEARABLE = ["cosplay", "pelucas", "accesorios", "merch"];
 const FANDOM = ["cosplay", "pelucas", "props", "accesorios", "figuras", "manga", "cartas", "merch", "arte", "videojuegos"];
 const listingBlank = {
   category: "cosplay", deal: "venta", title: "", description: "", price: "", acceptsTrade: false, condition: "usado",
-  size: "", measurements: "", series: "", characterName: "", delivery: "ambos", images: [] as string[], stock: "1",
+  size: "", measurements: "", series: "", characterName: "", delivery: "ambos", images: [] as string[], stock: "1", supportsApp: true,
 };
 
 export function ListingForm({ id }: { id?: number }) {
@@ -121,6 +122,7 @@ export function ListingForm({ id }: { id?: number }) {
   const toast = useToast();
   const utils = trpc.useUtils();
   const existing = trpc.listing.byId.useQuery({ id: id! }, { enabled: Boolean(id) });
+  const support = useSupport();
   const [f, setF] = useState(listingBlank);
   const [error, setError] = useState("");
 
@@ -133,9 +135,9 @@ export function ListingForm({ id }: { id?: number }) {
     if (filledWith.current === l) return;
     filledWith.current = l;
     setF({
-      category: l.category, deal: l.deal, title: l.title, description: l.description, price: l.priceCents != null ? String(l.priceCents / 100) : "",
+      category: l.category, deal: l.deal, title: l.title, description: l.description, price: l.priceCents != null ? String((l.priceCents - (l.supportsApp ? 100 : 0)) / 100) : "",
       acceptsTrade: l.acceptsTrade, condition: l.condition ?? "usado", size: l.size ?? "", measurements: l.measurements ?? "",
-      series: l.series ?? "", characterName: l.characterName ?? "", delivery: l.delivery, images: l.images, stock: String(Math.max(1, l.stock)),
+      series: l.series ?? "", characterName: l.characterName ?? "", delivery: l.delivery, images: l.images, stock: String(Math.max(1, l.stock)), supportsApp: l.supportsApp,
     });
   }, [existing.data, existing.isFetching]);
 
@@ -163,6 +165,7 @@ export function ListingForm({ id }: { id?: number }) {
       size: WEARABLE.includes(f.category) ? f.size : "", measurements: WEARABLE.includes(f.category) ? f.measurements : "",
       series: FANDOM.includes(f.category) ? f.series : "", characterName: FANDOM.includes(f.category) ? f.characterName : "",
       delivery: f.delivery as never, images: f.images,
+      supportsApp: Boolean(support?.enabled) && f.supportsApp,
       stock: stocked ? Math.max(1, Number(f.stock) || 1) : undefined,
     });
   };
@@ -203,6 +206,18 @@ export function ListingForm({ id }: { id?: number }) {
       )}
       <Field label="Entrega"><Select title="Entrega" value={f.delivery} onChange={up("delivery")} options={DELIVERY.map((d) => ({ value: d.id, label: d.label }))} /></Field>
       {!isService && <View style={[soft, { padding: 16 }]}><Check2 value={f.acceptsTrade} onChange={up("acceptsTrade")} label="Acepto cambiarlo por otro artículo" /></View>}
+      {support?.enabled ? (
+        <View style={{ backgroundColor: "rgba(205,228,190,0.55)", borderWidth: BORDER, borderColor: C.ink, borderRadius: 24, padding: 16, gap: 8 }}>
+          <Check2 value={f.supportsApp} onChange={up("supportsApp")} label={`Sumar ${formatPrice(support.amountCents)} al precio para mantener viva Cosland`} />
+          <T size={13.5} style={{ marginLeft: 36 }}>
+            {f.supportsApp
+              ? f.price && !Number.isNaN(Number(f.price))
+                ? `Tu publicación saldrá en ${formatPrice(Math.round(Number(f.price) * 100) + support.amountCents)}. Cuando vendas, envías ese dólar a Cosland. Es voluntario.`
+                : `Cuando vendas, envías ${formatPrice(support.amountCents)} a Cosland. Es voluntario.`
+              : "Publicar sigue siendo gratis. Puedes activarlo cuando quieras."}
+          </T>
+        </View>
+      ) : null}
       <Err text={error} />
       <Btn label={id ? "Guardar cambios" : "Publicar"} kind="ink" busy={save.isPending} disabled={f.title.trim().length < 4 || f.description.trim().length < 10} onPress={submit} />
     </View>

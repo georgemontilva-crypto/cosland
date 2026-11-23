@@ -139,19 +139,22 @@ export default function CheckoutSheet({ open, onClose, item }: { open: boolean; 
 
 // Reseña al recibir: estrellas y un comentario corto
 export function ReviewSheet({ target, onClose }: { target: null | { shopId: number; shopName: string }; onClose: () => void }) {
+  // El formulario nace limpio cada vez que se abre
+  return <Sheet open={Boolean(target)} onClose={onClose} title="¿Cómo te fue con tu compra?">{target ? <ReviewForm target={target} onClose={onClose} /> : null}</Sheet>;
+}
+
+function ReviewForm({ target, onClose }: { target: { shopId: number; shopName: string }; onClose: () => void }) {
   const toast = useToast();
   const utils = trpc.useUtils();
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
-  useEffect(() => { if (target) { setRating(5); setComment(""); } }, [target]);
   const save = trpc.review.save.useMutation({
     onSuccess: () => { utils.review.invalidate(); utils.shop.invalidate(); utils.order.invalidate(); toast("Reseña publicada. ¡Gracias!"); onClose(); },
     onError: (e) => toast(errText(e), true),
   });
   return (
-    <Sheet open={Boolean(target)} onClose={onClose} title="¿Cómo te fue con tu compra?">
       <View style={{ gap: 14 }}>
-        <T color={C.cocoa}>Tu reseña ayuda a que otros compren con confianza en {target?.shopName}.</T>
+        <T color={C.cocoa}>Tu reseña ayuda a que otros compren con confianza en {target.shopName}.</T>
         <View style={{ flexDirection: "row", gap: 4 }} accessibilityRole="radiogroup" accessibilityLabel="Calificación">
           {[1, 2, 3, 4, 5].map((i) => (
             <Pressable key={i} accessibilityRole="radio" accessibilityState={{ checked: rating === i }} accessibilityLabel={`${i} ${i === 1 ? "estrella" : "estrellas"}`} onPress={() => setRating(i)} hitSlop={4}>
@@ -160,9 +163,8 @@ export function ReviewSheet({ target, onClose }: { target: null | { shopId: numb
           ))}
         </View>
         <Field label="Cuéntalo en pocas palabras"><Input multiline value={comment} onChangeText={setComment} maxLength={1000} placeholder="Trato, tiempos de entrega, calidad…" accessibilityLabel="Cuéntalo en pocas palabras" /></Field>
-        <Btn label="Publicar reseña" kind="ink" busy={save.isPending} onPress={() => target && save.mutate({ shopId: target.shopId, rating, comment })} />
+        <Btn label="Publicar reseña" kind="ink" busy={save.isPending} onPress={() => save.mutate({ shopId: target.shopId, rating, comment })} />
         <Btn label="Ahora no" kind="ghost" onPress={onClose} />
       </View>
-    </Sheet>
   );
 }

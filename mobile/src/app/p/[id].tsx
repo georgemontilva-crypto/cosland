@@ -12,6 +12,7 @@ import { Awning, Avatar, Btn, Empty, Field, H2, IconBtn, Input, Loading, Photo, 
 import { Grid, PAD } from "@/ui/cards";
 import ContactSheet from "@/ui/ContactSheet";
 import CheckoutSheet, { Reputation, canBuy, payList } from "@/ui/Checkout";
+import { SupportSheet, type Owed } from "@/ui/Support";
 
 export default function ListingScreen() {
   const id = Number(useLocalSearchParams<{ id: string }>().id);
@@ -29,7 +30,10 @@ export default function ListingScreen() {
   const [reporting, setReporting] = useState(false);
   const [reason, setReason] = useState<string>(REPORT_REASONS[0]);
   const [detail, setDetail] = useState("");
-  const setStatus = trpc.listing.setStatus.useMutation({ onSuccess: () => { utils.listing.invalidate(); toast("Publicación actualizada"); } });
+  const [owed, setOwed] = useState<Owed | null>(null);
+  const setStatus = trpc.listing.setStatus.useMutation({
+    onSuccess: (r) => { utils.listing.invalidate(); utils.support.invalidate(); toast("Publicación actualizada"); if (r.contributionId) setOwed({ id: r.contributionId, title: q.data?.title }); },
+  });
   const report = trpc.report.create.useMutation({ onSuccess: () => { setReporting(false); setDetail(""); toast("Denuncia enviada. La revisaremos."); }, onError: (e) => toast(errText(e), true) });
 
   if (q.isLoading) return <Screen title=""><Loading /></Screen>;
@@ -156,6 +160,7 @@ export default function ListingScreen() {
         </View>
       )}
 
+      <SupportSheet owed={owed} onClose={() => setOwed(null)} />
       <CheckoutSheet open={ordering} onClose={() => setOrdering(false)} item={l} />
       <ContactSheet open={contact} onClose={() => setContact(false)} shopId={s.id} shopName={s.name} listingId={l.id} listingTitle={l.title} withOffer={l.kind === "product"} />
       <Sheet open={reporting} onClose={() => setReporting(false)} title="Denunciar publicación">

@@ -37,7 +37,7 @@ export function SupportModal({ id, title, amountCents, onClose }: { id: number; 
   const utils = trpc.useUtils();
   const [reference, setReference] = useState("");
   const [proof, setProof] = useState<string | null>(null);
-  const done = () => { utils.support.invalidate(); onClose(); };
+  const done = () => { utils.support.invalidate(); utils.order.invalidate(); onClose(); };
   const report = trpc.support.report.useMutation({ onSuccess: () => { toast("Gracias por apoyar a Cosland"); done(); }, onError: (e) => toast(e.message, true) });
   const skip = trpc.support.skip.useMutation({ onSuccess: done });
   return (

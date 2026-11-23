@@ -112,6 +112,7 @@ export const messages = mysqlTable("messages", {
   body: text("body").notNull(),
   listingId: int("listing_id"),
   offerCents: int("offer_cents"),
+  imageUrl: varchar("image_url", { length: 500 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [index("msg_conv_idx").on(t.conversationId, t.id)]);
 
