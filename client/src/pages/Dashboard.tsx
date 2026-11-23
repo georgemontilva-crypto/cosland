@@ -98,7 +98,7 @@ export default function Dashboard() {
         <ul className="grid gap-3">
           {items.map((l) => (
             <li key={l.id} className="soft p-3 flex gap-3.5 items-center">
-              <Link href={`/p/${l.id}`} className="w-20 h-20 rounded-2xl overflow-hidden border-[1.5px] border-ink shrink-0 block"><Photo src={l.images[0]} alt="" accent={shop.accent} /></Link>
+              <Link href={`/p/${l.id}`} className="w-20 h-20 rounded-2xl overflow-hidden border-[1.5px] border-ink bg-oat shrink-0 block"><Photo src={l.images[0]} alt="" accent={shop.accent} /></Link>
               <div className="min-w-0 flex-1">
                 <Link href={`/p/${l.id}`} className="font-extrabold leading-snug line-clamp-1">{l.title}</Link>
                 <p className="text-sm mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">

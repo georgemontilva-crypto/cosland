@@ -54,8 +54,8 @@ export default function ListingPage({ id }: { id: number }) {
 
       <div className="grid lg:grid-cols-[1.15fr_1fr] gap-7 lg:gap-12 items-start">
         <div>
-          <div className="relative aspect-[4/5] sm:aspect-square rounded-[2rem] overflow-hidden border-[1.5px] border-ink bg-oat">
-            <Photo src={l.images[photo]} alt={l.title} accent={s.accent} className="!object-contain" />
+          <div className="relative aspect-square rounded-[2rem] overflow-hidden border-[1.5px] border-ink bg-oat">
+            <Photo src={l.images[photo]} alt={l.title} accent={s.accent} />
             {l.status !== "active" && (
               <div className="absolute inset-0 bg-cream/75 grid place-items-center">
                 <span className="tag !text-lg !px-5 !py-1.5 -rotate-6">{l.status === "sold" ? "Vendido" : l.status === "paused" ? "En pausa" : "Retirado"}</span>
@@ -66,8 +66,8 @@ export default function ListingPage({ id }: { id: number }) {
             <div className="scroll-row mt-3">
               {l.images.map((src, i) => (
                 <button key={src} onClick={() => setPhoto(i)} aria-label={`Foto ${i + 1}`} aria-pressed={photo === i}
-                  className={`w-[4.5rem] h-[4.5rem] rounded-2xl overflow-hidden border-[1.5px] ${photo === i ? "border-ink ring-[3px] ring-yuzu" : "border-ink/30"}`}>
-                  <img src={src} alt="" className="w-full h-full object-cover" />
+                  className={`w-[4.5rem] h-[4.5rem] rounded-2xl overflow-hidden bg-oat border-[1.5px] ${photo === i ? "border-ink ring-[3px] ring-yuzu" : "border-ink/30"}`}>
+                  <img src={src} alt="" className="w-full h-full object-contain" />
                 </button>
               ))}
             </div>

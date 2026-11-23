@@ -48,7 +48,7 @@ export default function ListingScreen() {
           <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} style={{ width: W }}
             onMomentumScrollEnd={(e) => setPhoto(Math.round(e.nativeEvent.contentOffset.x / W))} scrollEventThrottle={32}
             onScroll={(e) => { const i = Math.round(e.nativeEvent.contentOffset.x / W); if (i !== photo) setPhoto(i); }}>
-            {photos.map((src, i) => <View key={i} style={{ width: W, height: W * 1.12 }}><Photo src={src} accent={s.accent} /></View>)}
+            {photos.map((src, i) => <View key={i} style={{ width: W, height: W }}><Photo src={src} accent={s.accent} /></View>)}
           </ScrollView>
           {l.status !== "active" && (
             <View pointerEvents="none" style={{ position: "absolute", inset: 0, backgroundColor: "rgba(251,241,220,0.75)", alignItems: "center", justifyContent: "center" }}>

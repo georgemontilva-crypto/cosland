@@ -22,7 +22,7 @@ export function ListingCard({ item, width }: { item: Card; width: number }) {
   return (
     <View style={{ width }}>
       <Pressable accessibilityRole="link" accessibilityLabel={`${item.title}, ${formatPrice(item.priceCents, item.deal)}`} onPress={() => router.push(`/p/${item.id}`)} style={({ pressed }) => pressed && { opacity: 0.85 }}>
-        <View style={{ width, height: width * 1.25, borderRadius: 24, overflow: "hidden", borderWidth: BORDER, borderColor: C.ink, backgroundColor: C.oat }}>
+        <View style={{ width, height: width, borderRadius: 24, overflow: "hidden", borderWidth: BORDER, borderColor: C.ink, backgroundColor: C.oat }}>
           <Photo src={item.images[0]} accent={item.shopAccent} />
           {item.status === "sold" && (
             <View style={{ position: "absolute", inset: 0, backgroundColor: "rgba(251,241,220,0.78)", alignItems: "center", justifyContent: "center" }}>

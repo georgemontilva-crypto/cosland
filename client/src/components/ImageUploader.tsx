@@ -26,7 +26,7 @@ export function PhotosInput({ value, onChange, max = 8 }: { value: string[]; onC
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
         {value.map((src, i) => (
           <div key={src} className="relative aspect-square rounded-2xl overflow-hidden border-[1.5px] border-ink bg-oat">
-            <img src={src} alt={`Foto ${i + 1}`} className="w-full h-full object-cover" />
+            <img src={src} alt={`Foto ${i + 1}`} className="w-full h-full object-contain" />
             <button type="button" onClick={() => onChange(value.filter((_, j) => j !== i))} aria-label={`Quitar foto ${i + 1}`} className="absolute top-1 right-1 w-8 h-8 grid place-items-center rounded-full bg-paper border-[1.5px] border-ink"><X size={15} /></button>
             {i === 0
               ? <span className="tag absolute left-1 bottom-1 !text-[0.68rem]">Portada</span>

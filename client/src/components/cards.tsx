@@ -5,9 +5,10 @@ import type { Card, ShopCardData } from "@/lib/trpc";
 import { useFavorites } from "@/lib/hooks";
 import { Awning, Avatar, Stars } from "./ui";
 
+// Las fotos de publicaciones van siempre en un marco cuadrado y se ven completas, sin recortes
 export function Photo({ src, alt, accent, className = "" }: { src?: string | null; alt: string; accent?: string | null; className?: string }) {
   return src ? (
-    <img src={src} alt={alt} loading="lazy" className={`object-cover w-full h-full ${className}`} />
+    <img src={src} alt={alt} loading="lazy" className={`object-contain w-full h-full ${className}`} />
   ) : (
     <div className={`w-full h-full grid place-items-center ${className}`} style={{ background: accentOf(accent).hex }}>
       <img src="/gato-ink.png" alt="" className="w-2/5 opacity-70" />
@@ -22,7 +23,7 @@ export function ListingCard({ item }: { item: Card }) {
   return (
     <article className="group relative">
       <Link href={`/p/${item.id}`} className="block rounded-[1.6rem]">
-        <div className="relative aspect-[4/5] rounded-[1.6rem] overflow-hidden border-[1.5px] border-ink bg-oat">
+        <div className="relative aspect-square rounded-[1.6rem] overflow-hidden border-[1.5px] border-ink bg-oat">
           <Photo src={item.images[0]} alt={item.title} accent={item.shopAccent} className="transition-transform duration-300 group-hover:scale-[1.03]" />
           {item.status === "sold" && (
             <div className="absolute inset-0 bg-cream/75 grid place-items-center"><span className="tag !text-base !px-4 !py-1 -rotate-6">Vendido</span></div>
