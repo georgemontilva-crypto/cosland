@@ -113,6 +113,7 @@ export const messages = mysqlTable("messages", {
   listingId: int("listing_id"),
   offerCents: int("offer_cents"),
   imageUrl: varchar("image_url", { length: 500 }),
+  replyToId: int("reply_to_id"), // el mensaje al que responde, si lo citó
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [index("msg_conv_idx").on(t.conversationId, t.id)]);
 

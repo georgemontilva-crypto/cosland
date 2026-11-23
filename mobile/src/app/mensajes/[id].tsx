@@ -1,14 +1,48 @@
-import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from "react-native";
+import { useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from "react";
+import { Animated, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ArrowLeft, Send } from "lucide-react-native";
+import { ArrowLeft, Reply, Send, X } from "lucide-react-native";
 import { formatPrice } from "@shared/catalog";
 import { errText, img, timeAgo, trpc, whatsappLink } from "@/lib/api";
 import { openExternal } from "@/lib/actions";
 import { BORDER, C } from "@/lib/theme";
 import { Avatar, Btn, Empty, IconBtn, Input, Loading, T, useToast } from "@/ui/core";
+
+type Quote = { id: number; senderId: number; body: string; hasImage: boolean; offerCents: number | null };
+// Lo que se ve de un mensaje citado
+const quoteText = (q: Quote) => (q.offerCents != null ? `Oferta: ${formatPrice(q.offerCents)}. ` : "") + (q.body || (q.hasImage ? "Foto" : ""));
+const TRIGGER = 56;
+const NATIVE = Platform.OS !== "web";
+
+// Deslizar una burbuja hacia la derecha para responderla, como en WhatsApp. Solo toma el gesto cuando va de lado,
+// así la conversación se sigue desplazando con normalidad.
+function SwipeRow({ enabled, mine, onReply, onLayoutY, children }: { enabled: boolean; mine: boolean; onReply: () => void; onLayoutY: (y: number) => void; children: ReactNode }) {
+  const x = useRef(new Animated.Value(0)).current;
+  const act = useRef(onReply); act.current = onReply;
+  const on = useRef(enabled); on.current = enabled;
+  const pan = useMemo(() => {
+    const sideways = (g: { dx: number; dy: number }) => on.current && g.dx > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5;
+    const back = () => Animated.spring(x, { toValue: 0, useNativeDriver: NATIVE, bounciness: 6 }).start();
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) => sideways(g),
+      onMoveShouldSetPanResponderCapture: (_e, g) => sideways(g),
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderMove: (_e, g) => x.setValue(Math.max(0, Math.min(84, g.dx * 0.85))),
+      onPanResponderRelease: (_e, g) => { back(); if (g.dx * 0.85 >= TRIGGER) act.current(); },
+      onPanResponderTerminate: back,
+    });
+  }, [x]);
+  return (
+    <View onLayout={(e) => onLayoutY(e.nativeEvent.layout.y)} style={{ maxWidth: "84%", alignSelf: mine ? "flex-end" : "flex-start" }}>
+      <Animated.View pointerEvents="none" style={{ position: "absolute", left: -38, top: "50%", marginTop: -24, width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: C.paper, borderWidth: BORDER, borderColor: C.line, opacity: x.interpolate({ inputRange: [0, TRIGGER], outputRange: [0, 1], extrapolate: "clamp" }) }}>
+        <Reply size={15} color={C.ink} />
+      </Animated.View>
+      <Animated.View {...pan.panHandlers} style={{ transform: [{ translateX: x }] }}>{children}</Animated.View>
+    </View>
+  );
+}
 
 export default function Thread() {
   const id = Number(useLocalSearchParams<{ id: string }>().id);
@@ -20,6 +54,21 @@ export default function Thread() {
   const [offer, setOffer] = useState("");
   const [offering, setOffering] = useState(false);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const box = useRef<ComponentRef<typeof TextInput>>(null);
+  // Responder a un mensaje concreto: queda citado sobre el cuadro de texto hasta enviar o cancelar
+  const [replyTo, setReplyTo] = useState<Quote | null>(null);
+  const [flash, setFlash] = useState<number | null>(null);
+  const tops = useRef(new Map<number, number>());
+  const follow = useRef(true); // seguir pegado al final cuando llegan mensajes; se suelta al ir a un mensaje citado
+  const reply = (m: Quote) => { setReplyTo(m); box.current?.focus(); };
+  // Tocar la cita lleva al mensaje original y lo resalta un momento
+  const jump = (mid: number) => {
+    const y = tops.current.get(mid);
+    if (y === undefined) return;
+    follow.current = false;
+    scroll.current?.scrollTo({ y: Math.max(0, y - 90), animated: true });
+    setFlash(mid); setTimeout(() => setFlash((f) => (f === mid ? null : f)), 1400);
+  };
   const count = q.data?.messages.length ?? 0;
   useEffect(() => { utils.auth.me.invalidate(); utils.chat.list.invalidate(); }, [count, utils]);
 
@@ -33,17 +82,18 @@ export default function Thread() {
           ...prev,
           messages: [...prev.messages, {
             id: -Date.now(), senderId: prev.me, body: v.body, offerCents: v.offer != null ? Math.round(v.offer * 100) : null, imageUrl: null, createdAt: new Date().toISOString(),
+            replyToId: replyTo?.id ?? null, reply: replyTo,
             listingId: null, listingTitle: null, listingImages: null, listingPrice: null, listingDeal: null,
           }],
         });
       }
-      setBody(""); setOffer(""); setOffering(false);
-      return { prev, text: v.body };
+      setBody(""); setOffer(""); setOffering(false); setReplyTo(null); follow.current = true;
+      return { prev, text: v.body, quoted: replyTo };
     },
-    onError: (e, _v, ctx) => { if (ctx?.prev) utils.chat.thread.setData({ id }, ctx.prev); if (ctx) setBody(ctx.text); toast(errText(e), true); },
+    onError: (e, _v, ctx) => { if (ctx?.prev) utils.chat.thread.setData({ id }, ctx.prev); if (ctx) { setBody(ctx.text); setReplyTo(ctx.quoted); } toast(errText(e), true); },
     onSettled: () => utils.chat.thread.invalidate({ id }),
   });
-  const submit = () => { if (body.trim() || offer) send.mutate({ id, body: body.trim() || "Te hago esta oferta.", offer: offer ? Number(offer) : undefined }); };
+  const submit = () => { if (body.trim() || offer) send.mutate({ id, body: body.trim() || "Te hago esta oferta.", offer: offer ? Number(offer) : undefined, replyTo: replyTo?.id }); };
   const back = () => (router.canGoBack() ? router.back() : router.replace("/mensajes"));
   const t = q.data;
 
@@ -65,12 +115,14 @@ export default function Thread() {
 
       {q.isLoading ? <View style={{ flex: 1 }}><Loading /></View> : !t ? <View style={{ flex: 1, padding: 18 }}><Empty title="No encontramos esa conversación" /></View> : (
         <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={{ padding: 14, gap: 10 }} keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>
+          onContentSizeChange={() => { if (follow.current) scroll.current?.scrollToEnd({ animated: false }); }}>
           {t.messages.map((m) => {
             const mine = m.senderId === t.me;
             const thumb = img(m.listingImages?.[0]);
+            const quote: Quote = { id: m.id, senderId: m.senderId, body: m.body, hasImage: Boolean(m.imageUrl), offerCents: m.offerCents };
+            const sent = m.id > 0; // los que aún se están enviando no se pueden citar
             return (
-              <View key={m.id} style={{ maxWidth: "84%", alignSelf: mine ? "flex-end" : "flex-start" }}>
+              <SwipeRow key={m.id} enabled={sent} mine={mine} onReply={() => reply(quote)} onLayoutY={(y) => tops.current.set(m.id, y)}>
                 {m.listingId && m.listingTitle ? (
                   <Pressable accessibilityRole="link" accessibilityLabel={`Ver ${m.listingTitle}`} onPress={() => router.push(`/p/${m.listingId}`)}
                     style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 4, padding: 6, paddingRight: 12, borderRadius: 18, backgroundColor: C.paper, borderWidth: BORDER, borderColor: C.line }}>
@@ -78,7 +130,16 @@ export default function Thread() {
                     <View style={{ flexShrink: 1 }}><T w="bold" size={13.5} numberOfLines={1}>{m.listingTitle}</T><T size={12} color={C.cocoa}>{formatPrice(m.listingPrice, m.listingDeal)}</T></View>
                   </Pressable>
                 ) : null}
-                <View style={[{ paddingHorizontal: 15, paddingVertical: 10, borderRadius: 22, borderWidth: BORDER, borderColor: C.ink }, mine ? { backgroundColor: C.ink, borderBottomRightRadius: 6 } : { backgroundColor: C.paper, borderBottomLeftRadius: 6 }]}>
+                <Pressable disabled={!sent} delayLongPress={320} onLongPress={() => reply(quote)} accessibilityHint="Mantén presionado o desliza a la derecha para responder"
+                  accessibilityActions={[{ name: "activate", label: "Responder" }]} onAccessibilityAction={() => reply(quote)}
+                  style={[{ paddingHorizontal: 15, paddingVertical: 10, borderRadius: 22, borderWidth: flash === m.id ? 3 : BORDER, borderColor: flash === m.id ? C.yuzu : C.ink }, mine ? { backgroundColor: C.ink, borderBottomRightRadius: 6 } : { backgroundColor: C.paper, borderBottomLeftRadius: 6 }]}>
+                  {m.reply ? (
+                    <Pressable accessibilityRole="button" accessibilityLabel="Ver el mensaje al que responde" onPress={() => jump(m.reply!.id)}
+                      style={{ marginBottom: 6, marginHorizontal: -5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, borderLeftWidth: 4, borderLeftColor: mine ? C.yuzu : C.sakura, backgroundColor: mine ? "rgba(251,241,220,0.15)" : C.oat }}>
+                      <T w="black" size={13.5} color={mine ? C.yuzu : C.ink}>{m.reply.senderId === t.me ? "Tú" : t.otherName}</T>
+                      <T size={13.5} numberOfLines={2} color={mine ? "rgba(251,241,220,0.85)" : C.cocoa}>{quoteText(m.reply)}</T>
+                    </Pressable>
+                  ) : null}
                   {m.offerCents != null && <T w="black" size={18} color={mine ? C.yuzu : C.ink}>Oferta: {formatPrice(m.offerCents)}</T>}
                   <T color={mine ? C.cream : C.ink}>{m.body}</T>
                   {img(m.imageUrl) ? (
@@ -86,9 +147,9 @@ export default function Thread() {
                       <Image source={{ uri: img(m.imageUrl)! }} style={{ width: 220, height: 280, borderRadius: 16, backgroundColor: C.cream }} contentFit="cover" />
                     </Pressable>
                   ) : null}
-                </View>
+                </Pressable>
                 <T size={11.5} color={C.cocoa} style={{ marginTop: 3, textAlign: mine ? "right" : "left" }}>{timeAgo(m.createdAt)}</T>
-              </View>
+              </SwipeRow>
             );
           })}
         </ScrollView>
@@ -103,9 +164,19 @@ export default function Thread() {
               <Pressable accessibilityRole="button" onPress={() => { setOffering(false); setOffer(""); }} hitSlop={8}><T size={13.5} color={C.cocoa} style={{ textDecorationLine: "underline" }}>Quitar</T></Pressable>
             </View>
           )}
+          {replyTo && (
+            <View style={{ flexDirection: "row", alignItems: "stretch", borderRadius: 18, backgroundColor: C.paper, borderWidth: BORDER, borderColor: C.line, overflow: "hidden" }}>
+              <View style={{ width: 6, backgroundColor: C.sakura }} />
+              <View style={{ flex: 1, paddingHorizontal: 12, paddingVertical: 6 }}>
+                <T w="black" size={13.5}>Respondiendo a {replyTo.senderId === t.me ? "ti" : t.otherName}</T>
+                <T size={13.5} color={C.cocoa} numberOfLines={1}>{quoteText(replyTo)}</T>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Cancelar la respuesta" onPress={() => setReplyTo(null)} style={{ width: 46, alignItems: "center", justifyContent: "center" }}><X size={18} color={C.ink} /></Pressable>
+            </View>
+          )}
           <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
             {!offering && <Btn label="Ofertar" kind="yuzu" small style={{ minHeight: 48 }} onPress={() => setOffering(true)} />}
-            <Input value={body} onChangeText={setBody} placeholder="Escribe un mensaje" multiline maxLength={2000} accessibilityLabel="Mensaje"
+            <Input inputRef={box} value={body} onChangeText={setBody} placeholder="Mensaje" multiline maxLength={2000} accessibilityLabel="Mensaje"
               style={{ flex: 1, minHeight: 48, maxHeight: 120, paddingTop: 12, borderRadius: 24 }} />
             <IconBtn label="Enviar" size={48} bg={body.trim() || offer ? C.ink : C.line} onPress={submit}><Send size={19} color={C.cream} /></IconBtn>
           </View>

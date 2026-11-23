@@ -629,8 +629,8 @@ const suggestCache = new Map<string, { until: number; data: unknown }>();
 const savedOnce = new Set<string>(); // favoritos ya avisados (en memoria; se reinicia con el servidor)
 
 /* ───────── Mensajes ───────── */
-async function postMessage(convId: number, senderId: number, fromSeller: boolean, body: string, listingId?: number | null, offerCents?: number | null, silent = false, imageUrl?: string | null) {
-  await db.insert(messages).values({ conversationId: convId, senderId, body, listingId: listingId ?? null, offerCents: offerCents ?? null, imageUrl: imageUrl ?? null });
+async function postMessage(convId: number, senderId: number, fromSeller: boolean, body: string, listingId?: number | null, offerCents?: number | null, silent = false, imageUrl?: string | null, replyToId?: number | null) {
+  await db.insert(messages).values({ conversationId: convId, senderId, body, listingId: listingId ?? null, offerCents: offerCents ?? null, imageUrl: imageUrl ?? null, replyToId: replyToId ?? null });
   await db.update(conversations).set({
     lastBody: body.slice(0, 200), lastAt: new Date(),
     ...(fromSeller ? { buyerUnread: sql`${conversations.buyerUnread} + 1` } : { sellerUnread: sql`${conversations.sellerUnread} + 1` }),
@@ -719,25 +719,41 @@ const chatRouter = router({
     await db.update(conversations).set(asSeller ? { sellerUnread: 0 } : { buyerUnread: 0 }).where(eq(conversations.id, input.id));
     const rows = await db.select({
       id: messages.id, senderId: messages.senderId, body: messages.body, offerCents: messages.offerCents, imageUrl: messages.imageUrl, createdAt: messages.createdAt,
+      replyToId: messages.replyToId,
       listingId: messages.listingId, listingTitle: listings.title, listingImages: listings.images, listingPrice: listings.priceCents, listingDeal: listings.deal,
     }).from(messages).leftJoin(listings, eq(listings.id, messages.listingId))
       .where(eq(messages.conversationId, input.id)).orderBy(desc(messages.id)).limit(200);
+    // Mensajes citados: casi siempre están entre los que ya se cargaron; los más viejos se buscan aparte
+    type Quote = { id: number; senderId: number; body: string; hasImage: boolean; offerCents: number | null };
+    const quotes = new Map<number, Quote>(rows.map((m) => [m.id, { id: m.id, senderId: m.senderId, body: m.body.slice(0, 160), hasImage: Boolean(m.imageUrl), offerCents: m.offerCents }]));
+    const missing = [...new Set(rows.map((m) => m.replyToId).filter((x): x is number => x != null && !quotes.has(x)))];
+    if (missing.length) {
+      const older = await db.select({ id: messages.id, senderId: messages.senderId, body: messages.body, imageUrl: messages.imageUrl, offerCents: messages.offerCents }).from(messages)
+        .where(and(eq(messages.conversationId, input.id), inArray(messages.id, missing)));
+      for (const m of older) quotes.set(m.id, { id: m.id, senderId: m.senderId, body: m.body.slice(0, 160), hasImage: Boolean(m.imageUrl), offerCents: m.offerCents });
+    }
     return {
       id: r.conv.id, asSeller, me: ctx.user.id,
       otherName: asSeller ? r.buyerName : r.shop.name,
       otherHandle: asSeller ? null : r.shop.handle,
       whatsapp: asSeller ? null : r.shop.whatsapp,
       accent: r.shop.accent,
-      messages: rows.reverse(),
+      messages: rows.reverse().map((m) => ({ ...m, reply: m.replyToId != null ? quotes.get(m.replyToId) ?? null : null })),
     };
   }),
 
-  send: authedProcedure.input(z.object({ id: z.number().int(), body, offer: dollars })).mutation(async ({ ctx, input }) => {
+  send: authedProcedure.input(z.object({ id: z.number().int(), body, offer: dollars, replyTo: z.number().int().positive().nullish() })).mutation(async ({ ctx, input }) => {
     const [r] = await db.select({ conv: conversations, ownerId: shops.userId }).from(conversations)
       .innerJoin(shops, eq(shops.id, conversations.shopId)).where(eq(conversations.id, input.id)).limit(1);
     const asSeller = r?.ownerId === ctx.user.id;
     if (!r || (!asSeller && r.conv.buyerId !== ctx.user.id)) throw fail("NOT_FOUND", "No encontramos esa conversación.");
-    await postMessage(input.id, ctx.user.id, asSeller, input.body, null, toCents(input.offer));
+    // Solo se puede citar un mensaje de esta misma conversación
+    let replyToId: number | null = null;
+    if (input.replyTo) {
+      const [target] = await db.select({ id: messages.id }).from(messages).where(and(eq(messages.id, input.replyTo), eq(messages.conversationId, input.id))).limit(1);
+      replyToId = target?.id ?? null;
+    }
+    await postMessage(input.id, ctx.user.id, asSeller, input.body, null, toCents(input.offer), false, null, replyToId);
     return { ok: true };
   }),
 });

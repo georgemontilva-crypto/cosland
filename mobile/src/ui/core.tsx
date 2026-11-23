@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type Ref, type ComponentRef } from "react";
 import {
   ActivityIndicator, Animated, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text as RNText,
   TextInput, View, type StyleProp, type TextInputProps, type TextProps, type TextStyle, type ViewStyle,
@@ -73,10 +73,11 @@ export function Field({ label, hint, error, children }: { label: string; hint?: 
   );
 }
 
-export function Input({ style, multiline, ...rest }: TextInputProps) {
+export function Input({ style, multiline, inputRef, ...rest }: TextInputProps & { inputRef?: Ref<ComponentRef<typeof TextInput>> }) {
   const [focus, setFocus] = useState(false);
   return (
     <TextInput
+      ref={inputRef}
       placeholderTextColor="rgba(107,90,78,0.7)" multiline={multiline} textAlignVertical={multiline ? "top" : "center"}
       {...rest}
       onFocus={(e) => { setFocus(true); rest.onFocus?.(e); }} onBlur={(e) => { setFocus(false); rest.onBlur?.(e); }}
