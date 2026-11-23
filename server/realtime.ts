@@ -10,17 +10,19 @@ import type { Response } from "express";
 //    No llevan datos: cada pantalla vuelve a pedir únicamente lo que tiene abierto.
 //    Se juntan durante un momento para que mucha actividad sea un solo mensaje.
 
-type Conn = { res: Response; userId: number | null; ip: string };
+type Conn = { res: Response; userId: number | null; ip: string; visible: boolean; cid: string | null; seen: number };
 
 const conns = new Set<Conn>();
 const byUser = new Map<number, Set<Conn>>();
 const anonByIp = new Map<string, number>();
+const byCid = new Map<string, Conn>();
 
 const MAX_TOTAL = 4000;        // tope de conexiones abiertas a la vez
 const MAX_PER_USER = 6;        // pestañas o dispositivos de una misma cuenta
 const MAX_ANON_PER_IP = 40;    // visitantes sin cuenta desde una misma red
 const MAX_BUFFER = 64 * 1024;  // si un cliente no lee, se suelta en vez de acumularle
 const FLUSH_MS = 1500;         // ventana para juntar novedades
+const WATCH_MS = 150_000;      // sin señal de la pestaña en este tiempo, ya no se cuenta como "mirando"
 const MAX_TOPICS = 60;         // si cambió demasiado a la vez, se manda "all"
 
 export function canSubscribe(userId: number | null, ip: string) {
@@ -31,6 +33,7 @@ export function canSubscribe(userId: number | null, ip: string) {
 
 function drop(c: Conn) {
   if (!conns.delete(c)) return;
+  if (c.cid && byCid.get(c.cid) === c) byCid.delete(c.cid);
   if (c.userId != null) {
     const set = byUser.get(c.userId);
     set?.delete(c);
@@ -49,8 +52,9 @@ function send(c: Conn, payload: string) {
   } catch { drop(c); }
 }
 
-export function subscribe(userId: number | null, ip: string, res: Response) {
-  const c: Conn = { res, userId, ip };
+export function subscribe(userId: number | null, ip: string, res: Response, cid: string | null = null) {
+  const c: Conn = { res, userId, ip, visible: true, cid, seen: Date.now() };
+  if (cid) byCid.set(cid, c);
   if (userId != null) {
     let set = byUser.get(userId);
     if (!set) byUser.set(userId, (set = new Set()));
@@ -71,6 +75,23 @@ export function subscribe(userId: number | null, ip: string, res: Response) {
 export function publish(userIds: number[], event: string, data: unknown) {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const id of new Set(userIds)) byUser.get(id)?.forEach((c) => send(c, payload));
+}
+
+// La pestaña avisa cuando pasa a segundo plano o vuelve: así se sabe si la persona está mirando Cosland
+export function setVisible(cid: string, visible: boolean) {
+  const c = byCid.get(cid);
+  if (c) { c.visible = visible; c.seen = Date.now(); }
+}
+
+// ¿Tiene Cosland abierto y a la vista ahora mismo? Entonces ve el aviso dentro de la app y no hace falta la notificación
+export function isWatching(userId: number) {
+  const set = byUser.get(userId);
+  if (!set) return false;
+  // La pestaña confirma cada dos minutos que sigue a la vista. Si se quedó sin red de golpe y no alcanzó
+  // a avisar, a los dos minutos y medio se deja de contar y los avisos vuelven a salir como notificación.
+  const fresh = Date.now() - WATCH_MS;
+  for (const c of set) if (c.visible && (c.cid === null || c.seen > fresh) && !c.res.writableEnded && !c.res.destroyed) return true;
+  return false;
 }
 
 // Novedades públicas: se acumulan y salen juntas en un solo mensaje

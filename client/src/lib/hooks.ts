@@ -52,6 +52,10 @@ export function useRealtime(userId: number | null) {
     let retry: ReturnType<typeof setTimeout> | undefined;
     let park: ReturnType<typeof setTimeout> | undefined;
     let stopped = false, attempts = 0, opened = false, hiddenAt = 0;
+    // Identifica esta pestaña para avisarle al servidor si está a la vista (así decide si manda notificación)
+    const cid = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, "0")).join("");
+    const presence = (visible: boolean) => { try { navigator.sendBeacon?.("/api/presence", `${cid}:${visible ? 1 : 0}`); } catch { /* sin beacon: la conexión se suelta sola */ } };
+    const touchDevice = window.matchMedia("(pointer: coarse)").matches;
     const refreshChat = (id?: number) => {
       if (!userId) return;
       utils.chat.list.invalidate();
@@ -62,7 +66,7 @@ export function useRealtime(userId: number | null) {
     const connect = () => {
       if (stopped || document.visibilityState !== "visible") return;
       close();
-      const src = (es = new EventSource("/api/events"));
+      const src = (es = new EventSource(`/api/events?c=${cid}`));
       src.onopen = () => {
         attempts = 0;
         if (opened) { refreshChat(); live.catchUp(); } // al reconectar, se pone al día
@@ -84,6 +88,11 @@ export function useRealtime(userId: number | null) {
         live.push(["me"]);
         if (m.text) toast(m.text);
       });
+      // Avisos cortos (por ejemplo, guardaron una publicación tuya)
+      src.addEventListener("note", (e) => {
+        const m = JSON.parse((e as MessageEvent).data) as { text?: string };
+        if (m.text) toast(m.text);
+      });
       src.addEventListener("follow", (e) => {
         const m = JSON.parse((e as MessageEvent).data) as { name: string };
         utils.auth.me.invalidate();
@@ -103,10 +112,13 @@ export function useRealtime(userId: number | null) {
       if (document.visibilityState !== "visible") {
         hiddenAt = Date.now();
         live.setVisible(false);
-        park = setTimeout(close, PARK_AFTER_MS);
+        presence(false);
+        // En el teléfono la app pasa a segundo plano de golpe: se suelta ya, para que los avisos lleguen como notificación
+        if (touchDevice) close(); else park = setTimeout(close, PARK_AFTER_MS);
         return;
       }
       live.setVisible(true);
+      if (es && es.readyState !== EventSource.CLOSED) presence(true);
       const away = hiddenAt ? Date.now() - hiddenAt : 0;
       hiddenAt = 0;
       refreshChat(); // el teléfono pausa la conexión en segundo plano
@@ -115,10 +127,12 @@ export function useRealtime(userId: number | null) {
     };
     const onOnline = () => { if (!es || es.readyState === EventSource.CLOSED) { attempts = 0; connect(); } };
     connect();
+    // Mientras está a la vista, lo confirma cada dos minutos (ver isWatching en el servidor)
+    const alive = setInterval(() => { if (document.visibilityState === "visible" && es && es.readyState === EventSource.OPEN) presence(true); }, 120_000);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("online", onOnline);
     return () => {
-      stopped = true; clearTimeout(park); close(); live.stop();
+      stopped = true; clearTimeout(park); clearInterval(alive); close(); live.stop();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("online", onOnline);
     };

@@ -43,6 +43,13 @@
       "when": 1795414449530,
       "tag": "0005_fine_rick_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1795449781781,
+      "tag": "0006_daily_human_robot",
+      "breakpoints": true
     }
   ]
 }

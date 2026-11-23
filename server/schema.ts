@@ -201,6 +201,17 @@ export const orders = mysqlTable("orders", {
 }, (t) => [index("orders_shop_idx").on(t.shopId, t.status), index("orders_buyer_idx").on(t.buyerId, t.status), index("orders_listing_idx").on(t.listingId)]);
 
 // Ajustes que el administrador cambia desde el panel (por ejemplo, la cuenta para los aportes)
+// Dispositivos que aceptaron recibir avisos (notificaciones push del navegador o de la app instalada)
+export const pushSubscriptions = mysqlTable("push_subscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  endpointHash: varchar("endpoint_hash", { length: 64 }).notNull(),
+  endpoint: varchar("endpoint", { length: 1000 }).notNull(),
+  p256dh: varchar("p256dh", { length: 200 }).notNull(),
+  auth: varchar("auth", { length: 100 }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("push_endpoint_idx").on(t.endpointHash), index("push_user_idx").on(t.userId)]);
+
 export const settings = mysqlTable("settings", {
   key: varchar("setting_key", { length: 60 }).primaryKey(),
   value: text("value").notNull(),

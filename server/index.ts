@@ -12,7 +12,7 @@ import { createContext, userFromRequest } from "./trpc";
 import { db, runMigrations } from "./db";
 import { listings, shops, users } from "./schema";
 import { saveImage, UPLOAD_DIR, storageMode } from "./storage";
-import { subscribe, canSubscribe, liveStats } from "./realtime";
+import { subscribe, canSubscribe, liveStats, setVisible } from "./realtime";
 import { formatPrice } from "../shared/catalog";
 
 const app = express();
@@ -81,8 +81,16 @@ app.get("/api/events", async (req, res) => {
   });
   // El reintento va con azar para que, tras un reinicio, no vuelvan todos a la vez
   res.write(`retry: ${3000 + Math.floor(Math.random() * 5000)}\n\n`);
-  const off = subscribe(user?.id ?? null, ip, res);
+  const cid = typeof req.query.c === "string" && /^[\w-]{8,40}$/.test(req.query.c) ? req.query.c : null;
+  const off = subscribe(user?.id ?? null, ip, res, cid);
   req.on("close", off);
+});
+
+// La pestaña avisa si pasó a segundo plano o volvió (decide si un aviso va como notificación o dentro de la app)
+app.post("/api/presence", express.text({ type: "*/*", limit: "1kb" }), (req, res) => {
+  const [cid, v] = String(req.body ?? "").split(":");
+  if (cid && /^[\w-]{8,40}$/.test(cid)) setVisible(cid, v === "1");
+  res.status(204).end();
 });
 
 app.use("/api/trpc", express.json({ limit: "200kb" }), createExpressMiddleware({ router: appRouter, createContext }));

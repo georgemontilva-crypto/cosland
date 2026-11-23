@@ -45,3 +45,35 @@ self.addEventListener("fetch", (e) => {
     );
   }
 });
+
+// ── Avisos ──
+// Llega un aviso con Cosland cerrada o en segundo plano: se muestra y se actualiza el número del icono
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { /* aviso sin datos legibles */ }
+  e.waitUntil((async () => {
+    try {
+      if (typeof d.badge === "number" && self.navigator.setAppBadge) await (d.badge > 0 ? self.navigator.setAppBadge(d.badge) : self.navigator.clearAppBadge());
+    } catch { /* este sistema no pone número en el icono */ }
+    await self.registration.showNotification(d.title || "Cosland", {
+      body: d.body || "", icon: "/icon-192.png", badge: "/badge-96.png", lang: "es",
+      tag: d.tag || undefined, renotify: Boolean(d.tag), data: { url: d.url || "/" },
+    });
+  })());
+});
+
+// Al tocarlo: lleva a la pantalla del aviso, en la ventana de Cosland que ya esté abierta o en una nueva
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || "/", self.location.origin).href;
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const open = wins.find((c) => new URL(c.url).origin === self.location.origin);
+    if (open) {
+      try { await open.focus(); } catch { /* el sistema no dejó traerla al frente */ }
+      open.postMessage({ go: url });
+      return;
+    }
+    await self.clients.openWindow(url);
+  })());
+});

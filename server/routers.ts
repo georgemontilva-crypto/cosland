@@ -5,9 +5,10 @@ import { and, or, eq, ne, like, desc, asc, sql, inArray, isNull, gte, lte, type 
 import { alias } from "drizzle-orm/mysql-core";
 import { db } from "./db";
 import { publish, touch, T } from "./realtime";
+import { alertUser, notify, pendingCount, pushEndpointAllowed, pushPublicKey, removePushSubscription, savePushSubscription } from "./push";
 import { deleteImages } from "./storage";
 import {
-  users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports, contributions, settings, orders, shopPayments,
+  users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports, contributions, settings, orders, shopPayments, pushSubscriptions,
 } from "./schema";
 import {
   router, publicProcedure, authedProcedure, adminProcedure, signSession, wantsToken, COOKIE,
@@ -80,23 +81,10 @@ const authRouter = router({
   me: publicProcedure.query(async ({ ctx }) => {
     if (!ctx.user) return null;
     const shop = await shopOf(ctx.user.id);
-    const [a] = await db.select({ c: n(sql`coalesce(sum(${conversations.buyerUnread}), 0)`) })
-      .from(conversations).where(eq(conversations.buyerId, ctx.user.id));
-    let unread = a?.c ?? 0;
-    if (shop) {
-      const [b] = await db.select({ c: n(sql`coalesce(sum(${conversations.sellerUnread}), 0)`) })
-        .from(conversations).where(eq(conversations.shopId, shop.id));
-      unread += b?.c ?? 0;
-    }
-    // Pedidos que esperan algo de esta persona: por aceptar (si vende) o por confirmar recibido (si compró)
-    const [toDo] = await db.select({ c: n(sql`count(*)`) }).from(orders).where(or(
-      // Como comprador: confirmar que llegó, o pagar lo que eligió pagar por adelantado
-      and(eq(orders.buyerId, ctx.user.id), or(eq(orders.status, "delivered"), and(eq(orders.status, "accepted"), eq(orders.payStatus, "unpaid")))),
-      // Como vendedor: confirmar un pago o entregar
-      shop ? and(eq(orders.shopId, shop.id), or(eq(orders.status, "pending"), and(eq(orders.status, "accepted"), ne(orders.payStatus, "unpaid")))) : undefined,
-    ));
+    // Mensajes sin leer y pedidos que esperan algo de esta persona (lo mismo que cuenta el icono de la app)
+    const pending = await pendingCount(ctx.user.id);
     return {
-      ...ctx.user, unread, orders: toDo?.c ?? 0,
+      ...ctx.user, unread: pending.unread, orders: pending.orders,
       shop: shop ? {
         id: shop.id, handle: shop.handle, name: shop.name, accent: shop.accent, avatarUrl: shop.avatarUrl,
         followers: (await db.select({ c: n(sql`count(*)`) }).from(follows).where(eq(follows.shopId, shop.id)))[0]?.c ?? 0,
@@ -179,6 +167,7 @@ const authRouter = router({
     for (const o of reserved) await releaseStock(o.listingId, o.quantity);
     await db.delete(orders).where(or(eq(orders.buyerId, u.id), shop ? eq(orders.shopId, shop.id) : undefined));
     await db.delete(favorites).where(eq(favorites.userId, u.id));
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, u.id));
     await db.delete(follows).where(eq(follows.userId, u.id));
     await db.delete(reviews).where(eq(reviews.authorId, u.id));
     await db.delete(wanted).where(eq(wanted.userId, u.id));
@@ -310,7 +299,9 @@ const shopRouter = router({
       await db.insert(follows).values({ userId: ctx.user.id, shopId: input.shopId });
       // Aviso en vivo al dueño de la vitrina, con el nombre público de quien lo sigue
       const mine = await shopOf(ctx.user.id);
-      publish([shop.userId], "follow", { shopId: shop.id, name: mine?.name ?? ctx.user.name.split(" ")[0] });
+      const name = mine?.name ?? ctx.user.name.split(" ")[0];
+      publish([shop.userId], "follow", { shopId: shop.id, name });
+      notify(shop.userId, { title: "Nuevo seguidor", body: `${name} empezó a seguir tu vitrina`, url: "/mi-vitrina", tag: `follow-${shop.id}` });
     }
     touch(T.shop(shop.id)); // el contador cambia para quien esté mirando esa vitrina
     return { following: !f };
@@ -551,7 +542,17 @@ const listingRouter = router({
     const cond = and(eq(favorites.userId, ctx.user.id), eq(favorites.listingId, input.listingId));
     const [f] = await db.select().from(favorites).where(cond).limit(1);
     if (f) await db.delete(favorites).where(cond);
-    else await db.insert(favorites).values({ userId: ctx.user.id, listingId: input.listingId });
+    else {
+      await db.insert(favorites).values({ userId: ctx.user.id, listingId: input.listingId });
+      // Aviso al vendedor, sin decir quién fue. Una sola vez por persona y publicación aunque lo quite y lo vuelva a poner.
+      const key = `${ctx.user.id}:${input.listingId}`;
+      if (!savedOnce.has(key)) {
+        if (savedOnce.size > 20_000) savedOnce.clear();
+        savedOnce.add(key);
+        const [l] = await db.select({ title: listings.title, ownerId: shops.userId }).from(listings).innerJoin(shops, eq(shops.id, listings.shopId)).where(eq(listings.id, input.listingId)).limit(1);
+        if (l && l.ownerId !== ctx.user.id) alertUser(l.ownerId, { title: "Guardaron tu publicación", body: `A alguien le gustó "${l.title}" y la guardó en favoritos`, url: `/p/${input.listingId}`, tag: `fav-${input.listingId}` });
+      }
+    }
     return { favorite: !f };
   }),
 
@@ -569,6 +570,8 @@ const listingRouter = router({
       .orderBy(desc(favorites.createdAt))),
 });
 
+const savedOnce = new Set<string>(); // favoritos ya avisados (en memoria; se reinicia con el servidor)
+
 /* ───────── Mensajes ───────── */
 async function postMessage(convId: number, senderId: number, fromSeller: boolean, body: string, listingId?: number | null, offerCents?: number | null, silent = false, imageUrl?: string | null) {
   await db.insert(messages).values({ conversationId: convId, senderId, body, listingId: listingId ?? null, offerCents: offerCents ?? null, imageUrl: imageUrl ?? null });
@@ -584,6 +587,12 @@ async function postMessage(convId: number, senderId: number, fromSeller: boolean
     publish([who.buyerId, who.ownerId], "chat", {
       conversationId: convId, from: senderId, fromName: fromSeller ? who.shopName : who.buyerName, preview: body.slice(0, 80), silent,
     });
+    // Fuera de la app, como notificación. Los mensajes automáticos de un pedido ya llevan la suya.
+    if (!silent) {
+      notify(fromSeller ? who.buyerId : who.ownerId, {
+        title: fromSeller ? who.shopName : who.buyerName.split(" ")[0], body: imageUrl && !body ? "Te envió una imagen" : body, url: `/mensajes/${convId}`, tag: `chat-${convId}`,
+      });
+    }
   }
 }
 
@@ -741,7 +750,9 @@ const orderRouter = router({
       const what = quantity > 1 ? `${quantity} unidades de "${row.l.title}"` : `"${row.l.title}"`;
       await postMessage(conversationId, ctx.user.id, false,
         `Hola, ${row.l.kind === "service" ? "pedí" : "compré"} ${what}. Pago: ${payLabel}. ¿Cómo cuadramos la entrega?${input.note ? `\n${input.note}` : ""}`, row.l.id, null, true);
-      publish([row.ownerId], "order", { id: r.insertId, text: `Nueva compra de ${ctx.user.name.split(" ")[0]}: ${row.l.title}` });
+      const sold = `Nueva compra de ${ctx.user.name.split(" ")[0]}: ${row.l.title}`;
+      publish([row.ownerId], "order", { id: r.insertId, text: sold });
+      notify(row.ownerId, { title: "¡Tienes una venta!", body: sold, url: "/pedidos", tag: `order-${r.insertId}` });
       touch(T.listing(row.l.id), T.shop(row.shopId), T.feed, T.admin);
       return { id: r.insertId, conversationId, existing: false, toPay: Boolean(method) };
     }),
@@ -795,7 +806,9 @@ const orderRouter = router({
         const said = `Ya pagué "${row.o.title}"${input.reference ? `. Referencia: ${input.reference}` : ""}.${input.proofUrl ? " Aquí está el comprobante." : ""}`;
         await postMessage(row.o.conversationId, ctx.user.id, false, said, row.o.listingId, null, true, input.proofUrl ?? null);
       }
-      publish([row.ownerId], "order", { id: row.o.id, text: `${ctx.user.name.split(" ")[0]} avisó que ya pagó: ${row.o.title}` });
+      const paid = `${ctx.user.name.split(" ")[0]} avisó que ya pagó: ${row.o.title}`;
+      publish([row.ownerId], "order", { id: row.o.id, text: paid });
+      notify(row.ownerId, { title: "Pago por confirmar", body: paid, url: "/pedidos", tag: `order-${row.o.id}` });
       touch(T.admin);
       return { ok: true };
     }),
@@ -866,6 +879,7 @@ const orderRouter = router({
       // El paso queda escrito en el chat, y a la otra persona le llega un solo aviso
       if (o.conversationId) await postMessage(o.conversationId, ctx.user.id, isSeller, say, o.listingId, null, true);
       publish([isSeller ? o.buyerId : row.ownerId], "order", { id: o.id, text: note });
+      if (note) notify(isSeller ? o.buyerId : row.ownerId, { title: isSeller ? "Tu compra" : "Tu venta", body: note, url: "/pedidos", tag: `order-${o.id}` });
       touch(T.listing(o.listingId), T.shop(o.shopId), T.shops, T.feed, T.admin, T.support);
       return { ok: true, contributionId, shopId: o.shopId };
     }),
@@ -1134,8 +1148,27 @@ const adminRouter = router({
     }),
 });
 
+/* ───────── Avisos (notificaciones push) ───────── */
+const pushRouter = router({
+  publicKey: publicProcedure.query(async () => ({ key: await pushPublicKey() })),
+  // Este dispositivo acepta avisos de esta cuenta
+  subscribe: authedProcedure.input(z.object({
+    endpoint: z.string().url().max(1000).refine(pushEndpointAllowed, "Este navegador usa un servicio de avisos que aún no admitimos."),
+    p256dh: z.string().min(20).max(200), auth: z.string().min(8).max(100),
+  })).mutation(async ({ ctx, input }) => { await savePushSubscription(ctx.user.id, input); return { ok: true }; }),
+  unsubscribe: publicProcedure.input(z.object({ endpoint: z.string().max(1000) })).mutation(async ({ ctx, input }) => {
+    if (ctx.user) await removePushSubscription(input.endpoint, ctx.user.id);
+    return { ok: true };
+  }),
+  // Para probar que llegan
+  test: authedProcedure.mutation(({ ctx }) => {
+    notify(ctx.user.id, { title: "Cosland", body: "Así te van a llegar los avisos de mensajes, ventas y favoritos.", url: "/", tag: "prueba" }, true);
+    return { ok: true };
+  }),
+});
+
 export const appRouter = router({
   auth: authRouter, shop: shopRouter, listing: listingRouter, chat: chatRouter,
-  review: reviewRouter, wanted: wantedRouter, report: reportRouter, support: supportRouter, order: orderRouter, admin: adminRouter,
+  review: reviewRouter, wanted: wantedRouter, report: reportRouter, support: supportRouter, order: orderRouter, push: pushRouter, admin: adminRouter,
 });
 export type AppRouter = typeof appRouter;

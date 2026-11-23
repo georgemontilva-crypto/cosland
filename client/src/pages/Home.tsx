@@ -5,6 +5,7 @@ import { CATEGORIES, accentOf, categoryOf, formatPrice } from "@shared/catalog";
 import { trpc, timeAgo } from "@/lib/trpc";
 import { Awning, Loading } from "@/components/ui";
 import { CategoryBubble, ListingGrid, ShopCard } from "@/components/cards";
+import PushCard from "@/components/PushCard";
 import { SupportMeter } from "@/components/Support";
 
 const WELCOME_KEY = "cosland_bienvenida";
@@ -92,6 +93,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <div className="wrap"><PushCard className="mt-6" /></div>
 
       <section className="wrap mt-12" aria-label="Categorías">
         <div className="scroll-row -mx-[1.125rem] px-[1.125rem] md:mx-0 md:px-0 md:flex-wrap">

@@ -4,6 +4,7 @@ import { ArrowLeft, Send } from "lucide-react";
 import { formatPrice } from "@shared/catalog";
 import { trpc, timeAgo, whatsappLink } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
+import PushCard from "@/components/PushCard";
 import { Avatar, Empty, Loading, useToast } from "@/components/ui";
 
 function Thread({ id }: { id: number }) {
@@ -111,6 +112,7 @@ export default function Messages({ id }: { id?: number }) {
   const inbox = (
     <div>
       <h1 className="text-3xl md:text-4xl mb-5">Mensajes</h1>
+      <PushCard className="mb-5" />
       {list.isLoading ? <Loading /> : !list.data?.length ? (
         <Empty title="Sin conversaciones todavía" action={<Link href="/explorar" className="btn btn-ink">Explorar</Link>}>Cuando le escribas a un vendedor o alguien pregunte por tus artículos, la conversación aparece aquí.</Empty>
       ) : (

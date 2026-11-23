@@ -1,11 +1,12 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Compass, Heart, Home as HomeIcon, LogOut, MessageCircle, Plus, Search, Shield, ShoppingBag, Store, User, Volume2, VolumeX } from "lucide-react";
+import { Compass, Heart, Home as HomeIcon, LogOut, MessageCircle, Plus, Search, Shield, ShoppingBag, Store, User, Volume2, VolumeX, BellRing, BellOff } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useMe, useRealtime } from "@/lib/hooks";
 import { previewSound, setSoundOn, soundOn } from "@/lib/sound";
 import InstallHint from "./InstallHint";
-import { Avatar } from "./ui";
+import { currentSubscription, usePush, usePushSync } from "@/lib/push";
+import { Avatar, useToast } from "./ui";
 
 // La voz que acompaña al logo al entrar: se apaga o se enciende aquí
 function SoundToggle() {
@@ -14,6 +15,24 @@ function SoundToggle() {
   return (
     <button className="inline-flex items-center gap-1.5 hover:underline" aria-pressed={on} onClick={toggle}>
       {on ? <Volume2 size={15} /> : <VolumeX size={15} />}Sonido de bienvenida: {on ? "activado" : "apagado"}
+    </button>
+  );
+}
+
+// Avisos en este dispositivo: se activan o se apagan aquí
+function PushToggle() {
+  const { state, enable, disable } = usePush();
+  const toast = useToast();
+  if (!state || state === "unsupported") return null;
+  const label = { on: "activados", off: "desactivados", blocked: "bloqueados en este navegador", install: "disponibles al añadir Cosland al inicio" }[state];
+  const onClick = () => {
+    if (state === "on") return void disable();
+    if (state === "off") return void enable();
+    toast(state === "blocked" ? "Permite las notificaciones de Cosland en los ajustes del navegador o del teléfono." : 'En iPhone: toca Compartir, luego "Añadir a pantalla de inicio" y abre Cosland desde ese icono.');
+  };
+  return (
+    <button className="inline-flex items-center gap-1.5 hover:underline text-left" aria-pressed={state === "on"} onClick={onClick}>
+      {state === "on" ? <BellRing size={15} /> : <BellOff size={15} />}Avisos: {label}
     </button>
   );
 }
@@ -35,6 +54,12 @@ function AccountMenu() {
   const [open, setOpen] = useState(false);
   const utils = trpc.useUtils();
   const logout = trpc.auth.logout.useMutation({ onSuccess: () => { utils.invalidate(); location.href = "/"; } });
+  // Al salir, este dispositivo deja de recibir los avisos de esta cuenta
+  const leave = async () => {
+    const sub = await currentSubscription();
+    if (sub) await utils.client.push.unsubscribe.mutate({ endpoint: sub.endpoint }).catch(() => {});
+    logout.mutate();
+  };
   if (!me) return <Link href="/entrar" className="btn btn-sm">Entrar</Link>;
   return (
     <div className="relative">
@@ -52,7 +77,7 @@ function AccountMenu() {
             <Link href="/mensajes" className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl hover:bg-oat font-bold"><MessageCircle size={18} />Mensajes</Link>
             <Link href="/pedidos" className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl hover:bg-oat font-bold"><ShoppingBag size={18} />Pedidos{me.orders ? <span className="ml-auto grid place-items-center min-w-6 h-6 px-1.5 rounded-full bg-berry text-cream text-xs">{me.orders}</span> : null}</Link>
             {me.role === "admin" && <Link href="/admin" className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl hover:bg-oat font-bold"><Shield size={18} />Administración</Link>}
-            <button onClick={() => logout.mutate()} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-2xl hover:bg-oat font-bold text-left"><LogOut size={18} />Salir</button>
+            <button onClick={leave} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-2xl hover:bg-oat font-bold text-left"><LogOut size={18} />Salir</button>
           </div>
         </>
       )}
@@ -65,6 +90,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const { me } = useMe();
   const inChat = path.startsWith("/mensajes/");
   useRealtime(me?.id ?? null);
+  usePushSync(me);
   const navLink = (href: string, label: string) => (
     <Link href={href} className={`px-3.5 py-2 rounded-full font-bold ${path.startsWith(href) ? "bg-oat" : "hover:bg-oat"}`}>{label}</Link>
   );
@@ -132,6 +158,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               <Link href="/privacidad" className="hover:underline">Privacidad</Link>
               <Link href="/eliminar-cuenta" className="hover:underline">Eliminar mi cuenta</Link>
               <SoundToggle />
+              {me && <PushToggle />}
             </nav>
             <p className="wrap pb-8 text-sm text-cream/60">Cosland conecta a compradores y vendedores. Cada venta se acuerda directamente entre las dos personas.</p>
           </div>

@@ -7,6 +7,7 @@ import { useMe } from "@/lib/hooks";
 import { Empty, Loading, Modal, useToast } from "@/components/ui";
 import { Photo } from "@/components/cards";
 import { SupportModal } from "@/components/Support";
+import PushCard from "@/components/PushCard";
 import { PayForm, ReviewModal } from "@/components/Checkout";
 
 type Order = Out["order"]["mine"]["buying"][number];
@@ -119,6 +120,7 @@ export default function Orders() {
     <div className="wrap pt-6 md:pt-10 max-w-3xl">
       <h1 className="text-3xl md:text-4xl">Pedidos</h1>
       <p className="text-cocoa mt-2">Tus compras y tus ventas. El pago va directo al vendedor y la entrega se cuadra por el chat.</p>
+      <PushCard className="mt-5" />
       {data?.hasShop && (
         <div className="scroll-row mt-5">
           <button className="chip" aria-pressed={current === "buying"} onClick={() => setTab("buying")}>Mis compras{buyN ? ` (${buyN})` : ""}</button>

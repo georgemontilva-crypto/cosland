@@ -41,7 +41,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 // Canal en vivo: una sola conexión abierta con el servidor mientras la app está en primer plano.
 // Trae el chat y los seguidores al instante, y los avisos de qué cambió en vitrinas y publicaciones.
 const AWAY_MS = 20_000; // si la app estuvo en segundo plano más que esto, al volver se pone al día
-type LiveEvent = "chat" | "follow" | "sync" | "me" | "bye" | "order";
+type LiveEvent = "chat" | "follow" | "sync" | "me" | "bye" | "order" | "note";
 
 function Realtime({ userId, ready }: { userId: number | null; ready: boolean }) {
   const utils = trpc.useUtils();
@@ -85,6 +85,10 @@ function Realtime({ userId, ready }: { userId: number | null; ready: boolean }) 
       // Pedidos: llega uno nuevo o la otra persona dio un paso
       src.addEventListener("order", (e) => {
         live.push(["me"]);
+        try { const m = JSON.parse(e.data ?? "{}") as { text?: string }; if (m.text) toast(m.text); } catch { /* aviso ilegible */ }
+      });
+      // Avisos cortos (por ejemplo, guardaron una publicación tuya)
+      src.addEventListener("note", (e) => {
         try { const m = JSON.parse(e.data ?? "{}") as { text?: string }; if (m.text) toast(m.text); } catch { /* aviso ilegible */ }
       });
       src.addEventListener("follow", (e) => {
