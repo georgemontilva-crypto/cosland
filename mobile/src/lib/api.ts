@@ -24,6 +24,14 @@ export async function loadToken() {
   return token;
 }
 
+/* ── Ajustes sencillos que el teléfono recuerda (por ejemplo, que ya se cerró la bienvenida) ── */
+export function getFlag(key: string): string | null {
+  try { return Platform.OS === "web" ? globalThis.localStorage?.getItem(key) ?? null : SecureStore.getItem(key); } catch { return null; }
+}
+export function setFlag(key: string, value: string) {
+  try { if (Platform.OS === "web") globalThis.localStorage?.setItem(key, value); else SecureStore.setItem(key, value); } catch { /* vale solo para esta sesión */ }
+}
+
 export async function saveToken(value: string | null) {
   token = value;
   try {

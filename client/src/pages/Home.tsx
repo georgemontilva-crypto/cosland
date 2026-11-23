@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
-import { Camera, Gem, Palette, Scissors, Search, Shirt, Store } from "lucide-react";
+import { Camera, Gem, Palette, Scissors, Search, Shirt, Store, X } from "lucide-react";
 import { CATEGORIES, accentOf, categoryOf, formatPrice } from "@shared/catalog";
 import { trpc, timeAgo } from "@/lib/trpc";
 import { Awning, Loading } from "@/components/ui";
 import { CategoryBubble, ListingGrid, ShopCard } from "@/components/cards";
 import { SupportMeter } from "@/components/Support";
+
+const WELCOME_KEY = "cosland_bienvenida";
 
 const STREET = [
   { kind: "cosplayer", title: "Cosplayers", text: "Cosplays, pelucas y props", accent: "sakura", Icon: Shirt },
@@ -29,22 +31,30 @@ export default function Home() {
   const [, go] = useLocation();
   const [q, setQ] = useState("");
   const home = trpc.listing.home.useQuery();
+  // La bienvenida es una tarjeta que se puede cerrar; el navegador recuerda que ya se cerró
+  const [welcome, setWelcome] = useState(() => { try { return localStorage.getItem(WELCOME_KEY) !== "0"; } catch { return true; } });
+  const closeWelcome = () => { setWelcome(false); try { localStorage.setItem(WELCOME_KEY, "0"); } catch { /* sin almacenamiento: se cierra solo por esta visita */ } };
   const submit = (e: FormEvent) => { e.preventDefault(); go(`/explorar${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`); };
 
   return (
     <>
-      <section className="wrap pt-8 md:pt-14 relative">
-        <div aria-hidden className="hidden lg:block absolute right-8 top-16 w-[19rem]">
-          <div className="absolute inset-x-2 top-6 bottom-0 rounded-[45%_55%_52%_48%/55%_48%_52%_45%] bg-sakura" />
-          <img src="/gato-ink.png" alt="" className="relative w-full rotate-[5deg]" />
-        </div>
-        <h1 className="text-[2.5rem] leading-[1.04] md:text-7xl max-w-4xl lg:max-w-[52rem]">
-          Vende el cosplay que ya no usas. Encuentra el que te falta.
-        </h1>
-        <p className="mt-4 md:mt-6 text-lg md:text-xl text-cocoa max-w-2xl">
-          Un mercado hecho por la comunidad: cosplays, pelucas, figuras, manga y quien te cose el próximo traje. Cada vendedor tiene su propia vitrina.
-        </p>
-        <form onSubmit={submit} role="search" className="mt-6 md:mt-8 flex gap-2 max-w-2xl">
+      <section className="wrap pt-5 md:pt-9">
+        {welcome ? (
+          <div className="panel relative overflow-hidden p-5 md:p-9 lg:pr-64">
+            <button className="btn btn-icon btn-sm absolute top-3 right-3 md:top-4 md:right-4 !w-10 !min-h-10" aria-label="Cerrar bienvenida" title="Cerrar" onClick={closeWelcome}><X size={18} /></button>
+            <div aria-hidden className="hidden lg:block absolute right-20 -bottom-6 w-40">
+              <div className="absolute inset-x-1 top-4 bottom-0 rounded-[45%_55%_52%_48%/55%_48%_52%_45%] bg-sakura" />
+              <img src="/gato-ink.png" alt="" className="relative w-full rotate-[5deg]" />
+            </div>
+            <h1 className="text-[1.6rem] leading-[1.1] md:text-[2.6rem] max-w-3xl pr-10 md:pr-12 lg:pr-0">
+              Vende el cosplay que ya no usas. Encuentra el que te falta.
+            </h1>
+            <p className="mt-2.5 md:mt-4 md:text-lg text-cocoa max-w-2xl">
+              Un mercado hecho por la comunidad: cosplays, pelucas, figuras, manga y quien te cose el próximo traje. Cada vendedor tiene su propia vitrina.
+            </p>
+          </div>
+        ) : <h1 className="sr-only">Cosland: compra y vende cosplay, figuras y más</h1>}
+        <form onSubmit={submit} role="search" className={`${welcome ? "mt-4 md:mt-6" : ""} flex gap-2 max-w-2xl`}>
           <div className="relative flex-1">
             <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-cocoa pointer-events-none" />
             <input

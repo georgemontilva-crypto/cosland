@@ -2,12 +2,14 @@ import { useState } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Camera, Gem, Heart, Palette, Scissors, Search, Shirt, Store } from "lucide-react-native";
+import { Camera, Gem, Heart, Palette, Scissors, Search, Shirt, Store, X } from "lucide-react-native";
 import { CATEGORIES, categoryOf, formatPrice } from "@shared/catalog";
-import { timeAgo, trpc } from "@/lib/api";
+import { getFlag, setFlag, timeAgo, trpc } from "@/lib/api";
 import { BORDER, C, NOTE, accentHex } from "@/lib/theme";
 import { Awning, Btn, H2, IconBtn, Input, Loading, Logo, T, panel } from "@/ui/core";
 import { Grid, PAD, ShopCard } from "@/ui/cards";
+
+const WELCOME_KEY = "cosland_bienvenida";
 
 const STREET = [
   { kind: "cosplayer", title: "Cosplayers", text: "Cosplays, pelucas y props", accent: "sakura", Icon: Shirt },
@@ -31,6 +33,9 @@ export default function Home() {
   const insets = useSafeAreaInsets();
   const [q, setQ] = useState("");
   const home = trpc.listing.home.useQuery();
+  // La bienvenida es una tarjeta que se puede cerrar; el teléfono recuerda que ya se cerró
+  const [welcome, setWelcome] = useState(() => getFlag(WELCOME_KEY) !== "0");
+  const closeWelcome = () => { setWelcome(false); setFlag(WELCOME_KEY, "0"); };
   const search = () => router.push({ pathname: "/explorar", params: q.trim() ? { q: q.trim() } : {} });
 
   return (
@@ -41,10 +46,17 @@ export default function Home() {
       </View>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}
         refreshControl={<RefreshControl refreshing={home.isRefetching} onRefresh={() => { home.refetch(); }} tintColor={C.ink} colors={[C.ink]} />}>
-        <View style={{ paddingHorizontal: PAD, paddingTop: 14 }}>
-          <T w="black" size={33} style={{ lineHeight: 37 }}>Vende el cosplay que ya no usas. Encuentra el que te falta.</T>
-          <T size={16.5} color={C.cocoa} style={{ marginTop: 12 }}>Cosplays, pelucas, figuras, manga y quien te cose el próximo traje. Cada vendedor tiene su vitrina.</T>
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 18 }}>
+        <View style={{ paddingHorizontal: PAD, paddingTop: 10 }}>
+          {welcome ? (
+            <View style={[panel, { padding: 18, marginBottom: 14 }]}>
+              <T w="black" size={24} style={{ lineHeight: 28, paddingRight: 38 }} accessibilityRole="header">Vende el cosplay que ya no usas. Encuentra el que te falta.</T>
+              <T size={15} color={C.cocoa} style={{ marginTop: 8, lineHeight: 21 }}>Cosplays, pelucas, figuras, manga y quien te cose el próximo traje. Cada vendedor tiene su vitrina.</T>
+              <View style={{ position: "absolute", top: 8, right: 8 }}>
+                <IconBtn label="Cerrar bienvenida" size={38} border bg={C.paper} onPress={closeWelcome}><X size={17} color={C.ink} /></IconBtn>
+              </View>
+            </View>
+          ) : null}
+          <View style={{ flexDirection: "row", gap: 8 }}>
             <View style={{ flex: 1, justifyContent: "center" }}>
               <Input value={q} onChangeText={setQ} placeholder="Nezuko talla M, peluca rubia" returnKeyType="search" onSubmitEditing={search} accessibilityLabel="¿Qué buscas?"
                 style={{ borderRadius: 999, paddingLeft: 44, borderColor: C.ink, minHeight: 52 }} />
