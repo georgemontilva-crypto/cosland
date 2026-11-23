@@ -66,7 +66,7 @@ export function ListingGrid({ items }: { items: Card[] }) {
 /* Tarjeta de vitrina: una fachada con su toldo */
 export function ShopCard({ shop }: { shop: Pick<ShopCardData, "handle" | "name" | "kind" | "avatarUrl" | "accent" | "city" | "verified" | "hasStore" | "listingCount" | "rating" | "reviewCount"> & { supporter?: number } }) {
   return (
-    <Link href={`/v/${shop.handle}`} className="block panel overflow-hidden transition-transform hover:-translate-y-1">
+    <Link href={`/v/${shop.handle}`} className="block h-full panel overflow-hidden transition-transform hover:-translate-y-1">
       <Awning accent={shop.accent} size={30} />
       <div className="px-4 pb-4 pt-3 flex items-center gap-3">
         <Avatar src={shop.avatarUrl} name={shop.name} accent={shop.accent} size={56} />
@@ -81,9 +81,9 @@ export function ShopCard({ shop }: { shop: Pick<ShopCardData, "handle" | "name" 
             {shop.hasStore && <span className="inline-flex items-center gap-1"><Store size={13} />Tienda física</span>}
             {(shop.supporter ?? 0) > 0 && <span className="inline-flex items-center gap-1 text-ink font-bold"><HeartHandshake size={13} />Apoya a Cosland</span>}
           </p>
-          <p className="text-sm mt-1 flex items-center gap-2">
-            {shop.reviewCount > 0 && <><Stars value={shop.rating} size={13} /><span className="text-cocoa">({shop.reviewCount})</span></>}
-            <span className="text-cocoa">{shop.listingCount} {shop.listingCount === 1 ? "publicación" : "publicaciones"}</span>
+          <p className="text-sm mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            {shop.reviewCount > 0 && <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><Stars value={shop.rating} size={13} /><span className="text-cocoa">({shop.reviewCount})</span></span>}
+            <span className="text-cocoa whitespace-nowrap">{shop.listingCount} {shop.listingCount === 1 ? "publicación" : "publicaciones"}</span>
           </p>
         </div>
       </div>

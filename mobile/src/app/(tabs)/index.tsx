@@ -140,9 +140,12 @@ export default function Home() {
             </View>
 
             {home.data.shops.length > 0 && (
-              <View style={{ paddingHorizontal: PAD, marginTop: 40 }}>
-                <Head title="Vitrinas para visitar" link="Ver todas" onPress={() => router.push("/vitrinas")} />
-                <View style={{ gap: 12 }}>{home.data.shops.slice(0, 5).map((s) => <ShopCard key={s.id} shop={s} />)}</View>
+              <View style={{ marginTop: 40 }}>
+                <View style={{ paddingHorizontal: PAD }}><Head title="Vitrinas para visitar" link="Ver todas" onPress={() => router.push("/vitrinas")} /></View>
+                {/* Se deslizan de lado para no alargar el Inicio */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: PAD, gap: 12 }}>
+                  {home.data.shops.map((s) => <View key={s.id} style={{ width: 280 }}><ShopCard shop={s} /></View>)}
+                </ScrollView>
               </View>
             )}
           </>

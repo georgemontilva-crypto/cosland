@@ -73,8 +73,8 @@ export function ShopCard({ shop }: { shop: Pick<ShopSummary, "handle" | "name" |
             {shop.city ? <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}><MapPin size={13} color={C.cocoa} /><T size={13} color={C.cocoa}>{shop.city}</T></View> : null}
             {shop.hasStore && <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}><Store size={13} color={C.cocoa} /><T size={13} color={C.cocoa}>Tienda física</T></View>}
           </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 3 }}>
-            {shop.reviewCount > 0 && <><Stars value={shop.rating} size={13} /><T size={13} color={C.cocoa}>({shop.reviewCount})</T></>}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 8, rowGap: 2, marginTop: 3 }}>
+            {shop.reviewCount > 0 && <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><Stars value={shop.rating} size={13} /><T size={13} color={C.cocoa}>({shop.reviewCount})</T></View>}
             <T size={13} color={C.cocoa}>{shop.listingCount} {shop.listingCount === 1 ? "publicación" : "publicaciones"}</T>
           </View>
         </View>

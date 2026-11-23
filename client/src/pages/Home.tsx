@@ -139,10 +139,13 @@ export default function Home() {
           </section>
 
           {home.data.shops.length > 0 && (
-            <section className="wrap mt-16">
-              <SectionHead title="Vitrinas para visitar" href="/vitrinas" link="Ver todas" />
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {home.data.shops.map((s) => <ShopCard key={s.id} shop={s} />)}
+            <section className="mt-16">
+              <div className="wrap"><SectionHead title="Vitrinas para visitar" href="/vitrinas" link="Ver todas" /></div>
+              {/* En teléfono se deslizan de lado para no alargar la página; en pantallas anchas van en cuadrícula */}
+              <div className="wrap !pr-0 sm:!pr-8">
+                <div className="scroll-row !gap-3 items-stretch pr-5 sm:pr-0 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:!gap-4 sm:overflow-visible">
+                  {home.data.shops.map((s) => <div key={s.id} className="w-[17.5rem] shrink-0 snap-start sm:w-auto"><ShopCard shop={s} /></div>)}
+                </div>
               </div>
             </section>
           )}
