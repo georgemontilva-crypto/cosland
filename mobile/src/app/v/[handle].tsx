@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Image } from "expo-image";
-import { AtSign, BadgeCheck, Clock, MapPin, MessageCircle, Pencil, Share2, Star, Store } from "lucide-react-native";
+import { BadgeCheck, Camera, Clock, MapPin, MessageCircle, Music2, Pencil, Phone, Plus, Share2, Star, Store } from "lucide-react-native";
 import { shopKindLabel } from "@shared/catalog";
 import { errText, img, timeAgo, trpc, whatsappLink } from "@/lib/api";
 import { openExternal, shareLink } from "@/lib/actions";
@@ -80,8 +80,16 @@ export default function ShopScreen() {
     <Screen title={s.name} pad={false} right={<IconBtn label="Compartir vitrina" onPress={() => shareLink(`${s.name} en Cosland`, `/v/${s.handle}`, toast)}><Share2 size={20} color={C.ink} /></IconBtn>}>
       <Awning accent={s.accent} size={38} />
       <View style={{ padding: PAD }}>
-        {banner && <View style={{ height: 120, borderRadius: 26, overflow: "hidden", borderWidth: BORDER, borderColor: C.ink, marginBottom: -34 }}><Image source={{ uri: banner }} style={{ width: "100%", height: "100%" }} contentFit="cover" /></View>}
-        <View style={banner ? { paddingLeft: 14 } : undefined}><Avatar src={s.avatarUrl} name={s.name} accent={s.accent} size={96} /></View>
+        {banner && <View style={{ aspectRatio: 5 / 2, borderRadius: 24, overflow: "hidden", borderWidth: BORDER, borderColor: C.ink, marginBottom: -44 }}><Image source={{ uri: banner }} style={{ width: "100%", height: "100%" }} contentFit="cover" /></View>}
+        {/* La foto y los enlaces comparten fila; los dos botones principales van debajo del nombre */}
+        <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingHorizontal: banner ? 8 : 0 }}>
+          <View style={{ borderRadius: 50, padding: 4, margin: -4, backgroundColor: C.cream }}><Avatar src={s.avatarUrl} name={s.name} accent={s.accent} size={88} /></View>
+          <View style={{ flexDirection: "row", gap: 7 }}>
+            {!s.isMine && s.whatsapp ? <IconBtn label="Escribir por WhatsApp" size={44} border bg={C.matcha} onPress={() => openExternal(whatsappLink(s.whatsapp!, `Hola, vi tu vitrina "${s.name}" en Cosland.`))}><Phone size={19} color={C.ink} /></IconBtn> : null}
+            {s.instagram ? <IconBtn label="Instagram de la vitrina" size={44} border bg={C.paper} onPress={() => openExternal(`https://instagram.com/${s.instagram}`)}><Camera size={19} color={C.ink} /></IconBtn> : null}
+            {s.tiktok ? <IconBtn label="TikTok de la vitrina" size={44} border bg={C.paper} onPress={() => openExternal(`https://tiktok.com/@${s.tiktok}`)}><Music2 size={19} color={C.ink} /></IconBtn> : null}
+          </View>
+        </View>
         <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
           <T w="black" size={28} style={{ lineHeight: 32, flexShrink: 1 }} accessibilityRole="header">{s.name}</T>
           {s.verified && <BadgeCheck size={24} color={C.ink} />}
@@ -95,24 +103,21 @@ export default function ShopScreen() {
           </Pressable>
         </View>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}>
           {s.isMine ? (
             <>
-              <Btn label="Editar vitrina" kind="ink" icon={<Pencil size={16} color={C.cream} />} onPress={() => router.push("/vitrina-editar")} />
-              <Btn label="Publicar algo nuevo" kind="sakura" onPress={() => router.push("/publicar")} />
+              <Btn grow label="Editar vitrina" kind="ink" icon={<Pencil size={16} color={C.cream} />} onPress={() => router.push("/vitrina-editar")} />
+              <Btn grow label="Publicar" kind="sakura" icon={<Plus size={17} color={C.ink} />} onPress={() => router.push("/publicar")} />
             </>
           ) : (
             <>
-              <Btn label={s.isFollowing ? "Siguiendo" : "Seguir"} kind={s.isFollowing ? "paper" : "ink"} onPress={() => (me ? follow.mutate({ shopId: s.id }) : login())} />
-              <Btn label="Escribir" icon={<MessageCircle size={17} color={C.ink} />} onPress={() => (me ? setContact(true) : login())} />
-              {s.whatsapp ? <Btn label="WhatsApp" kind="matcha" onPress={() => openExternal(whatsappLink(s.whatsapp!, `Hola, vi tu vitrina "${s.name}" en Cosland.`))} /> : null}
+              <Btn grow label={s.isFollowing ? "Siguiendo" : "Seguir"} kind={s.isFollowing ? "paper" : "ink"} onPress={() => (me ? follow.mutate({ shopId: s.id }) : login())} />
+              <Btn grow label="Escribir" icon={<MessageCircle size={17} color={C.ink} />} onPress={() => (me ? setContact(true) : login())} />
             </>
           )}
-          {s.instagram ? <Btn label="Instagram" icon={<AtSign size={16} color={C.ink} />} onPress={() => openExternal(`https://instagram.com/${s.instagram}`)} /> : null}
-          {s.tiktok ? <Btn label="TikTok" onPress={() => openExternal(`https://tiktok.com/@${s.tiktok}`)} /> : null}
         </View>
 
-        {s.bio ? <T size={16} style={{ marginTop: 18 }}>{s.bio}</T> : null}
+        {s.bio ? <T size={16} style={{ marginTop: 16 }}>{s.bio}</T> : null}
         {s.hasStore && (s.address || s.hours) ? (
           <View style={[panel, { padding: 18, marginTop: 18, gap: 8 }]}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Store size={19} color={C.ink} /><T w="black" size={17}>Tienda física</T></View>

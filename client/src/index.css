@@ -65,8 +65,41 @@
   .btn-matcha { background: var(--color-matcha); }
   .btn-yuzu { background: var(--color-yuzu); }
   .btn-sm { min-height: 2.25rem; padding: 0.3rem 0.9rem; font-size: 0.875rem; }
+  .btn-icon { width: 2.875rem; padding: 0; flex: none; }
+  .btn-icon > span { display: none; }
   .btn-ghost { border-color: transparent; background: transparent; }
   .btn-ghost:hover:not(:disabled) { box-shadow: none; transform: none; background: var(--color-oat); }
+
+  /* Encabezado de vitrina */
+  .shop-head {
+    display: grid; grid-template-columns: auto 1fr; column-gap: 0.75rem; align-items: end;
+    grid-template-areas: "avatar icons" "info info" "main main";
+  }
+  .sh-avatar {
+    grid-area: avatar; width: 5.5rem; height: 5.5rem; border-radius: 999px;
+    background: var(--color-cream); box-shadow: 0 0 0 5px var(--color-cream); margin-left: 0.6rem;
+  }
+  .sh-avatar > * { width: 100% !important; height: 100% !important; }
+  .shop-head.has-banner .sh-avatar { margin-top: -2.2rem; }
+  .sh-info { grid-area: info; margin-top: 0.8rem; }
+  .sh-actions { display: contents; }
+  .sh-icons { grid-area: icons; justify-self: end; display: flex; gap: 0.4rem; margin-right: 0.35rem; }
+  .sh-main { grid-area: main; margin-top: 0.9rem; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0.5rem; max-width: 26rem; }
+  .sh-main .btn { white-space: nowrap; padding-inline: 0.9rem; }
+  @media (min-width: 72rem) {
+    .shop-head { grid-template-columns: auto 1fr auto; grid-template-areas: "avatar info actions"; column-gap: 1.5rem; align-items: start; padding-inline: 2rem; }
+    .sh-avatar { width: 8rem; height: 8rem; box-shadow: 0 0 0 6px var(--color-cream); margin-left: 0; }
+    .shop-head.has-banner .sh-avatar { margin-top: -4rem; }
+    .sh-info { margin-top: 0; padding-top: 1rem; }
+    .sh-actions { grid-area: actions; display: flex; align-items: center; gap: 0.5rem; padding-top: 1.15rem; }
+    .sh-main { margin-top: 0; display: flex; max-width: none; }
+    .sh-main .btn { padding-inline: 1.3rem; }
+    .sh-icons { gap: 0.5rem; margin-right: 0; }
+  }
+  @media (min-width: 80rem) {
+    .btn-icon.sh-wide { width: auto; padding: 0.55rem 1.3rem; }
+    .btn-icon.sh-wide > span { display: inline; }
+  }
 
   .field-label { display: block; font-weight: 700; font-size: 0.925rem; margin-bottom: 0.35rem; }
   .field-hint { font-size: 0.825rem; color: var(--color-cocoa); margin-top: 0.3rem; }

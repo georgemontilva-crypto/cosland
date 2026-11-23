@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { AtSign, BadgeCheck, Clock, MapPin, MessageCircle, Pencil, Share2, Star, Store } from "lucide-react";
+import { BadgeCheck, Camera, Clock, MapPin, MessageCircle, Music2, Pencil, Phone, Plus, Share2, Star, Store } from "lucide-react";
 import { shopKindLabel } from "@shared/catalog";
 import { trpc, timeAgo, whatsappLink } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
@@ -84,15 +84,17 @@ export default function ShopPage({ handle }: { handle: string }) {
       <Awning accent={s.accent} size={44} className="unroll" />
       <div className="wrap">
         {s.bannerUrl && (
-          <div className="mt-5 aspect-[3/1] md:aspect-[4/1] rounded-[2rem] overflow-hidden border-[1.5px] border-ink">
+          <div className="mt-5 aspect-[5/2] sm:aspect-[3/1] lg:aspect-[4/1] rounded-[1.6rem] md:rounded-[2rem] overflow-hidden border-[1.5px] border-ink">
             <img src={s.bannerUrl} alt="" className="w-full h-full object-cover" />
           </div>
         )}
-        <div className={`flex flex-col md:flex-row md:items-end gap-4 md:gap-6 ${s.bannerUrl ? "-mt-10 md:-mt-12 px-4 md:px-8" : "mt-8"}`}>
-          <Avatar src={s.avatarUrl} name={s.name} accent={s.accent} size={112} />
-          <div className="flex-1 min-w-0 md:pb-1">
-            <h1 className="text-3xl md:text-5xl flex items-center gap-2 flex-wrap">
-              {s.name}{s.verified && <BadgeCheck size={28} aria-label="Vitrina verificada" />}
+        {/* Encabezado: en teléfono la foto y los enlaces van en una fila y los dos botones principales debajo;
+            en pantallas anchas todo cabe en una sola fila bajo la portada. */}
+        <div className={`shop-head ${s.bannerUrl ? "has-banner" : "mt-7"}`}>
+          <div className="sh-avatar"><Avatar src={s.avatarUrl} name={s.name} accent={s.accent} size={112} /></div>
+          <div className="sh-info min-w-0">
+            <h1 className="text-[1.75rem] md:text-[2.1rem] xl:text-[2.6rem] leading-[1.12] text-balance flex items-center gap-2 flex-wrap">
+              {s.name}{s.verified && <BadgeCheck size={26} aria-label="Vitrina verificada" />}
             </h1>
             <p className="text-cocoa mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
               <span>{shopKindLabel(s.kind)}</span>
@@ -102,27 +104,33 @@ export default function ShopPage({ handle }: { handle: string }) {
               <button className="font-bold text-ink underline underline-offset-4" onClick={() => setFollowers(true)}>{s.followers} {s.followers === 1 ? "seguidor" : "seguidores"}</button>
             </p>
           </div>
+          <div className="sh-actions">
+            <div className="sh-main">
+              {s.isMine ? (
+                <>
+                  <Link href="/mi-vitrina/editar" className="btn btn-ink"><Pencil size={17} />Editar vitrina</Link>
+                  <Link href="/publicar" className="btn btn-sakura"><Plus size={18} />Publicar</Link>
+                </>
+              ) : (
+                <>
+                  <button className={`btn ${s.isFollowing ? "" : "btn-ink"}`} aria-pressed={s.isFollowing} onClick={() => (me ? follow.mutate({ shopId: s.id }) : needLogin())}>{s.isFollowing ? "Siguiendo" : "Seguir"}</button>
+                  <button className="btn" onClick={() => (me ? setContact(true) : needLogin())}><MessageCircle size={17} />Escribir</button>
+                </>
+              )}
+            </div>
+            <div className="sh-icons">
+              {!s.isMine && s.whatsapp && (
+                <a className="btn btn-matcha btn-icon sh-wide" target="_blank" rel="noopener noreferrer" aria-label="Escribir por WhatsApp" title="WhatsApp"
+                  href={whatsappLink(s.whatsapp, `Hola, vi tu vitrina "${s.name}" en Cosland.`)}><Phone size={19} /><span>WhatsApp</span></a>
+              )}
+              {s.instagram && <a className="btn btn-icon" target="_blank" rel="noopener noreferrer" aria-label="Instagram de la vitrina" title="Instagram" href={`https://instagram.com/${s.instagram}`}><Camera size={19} /></a>}
+              {s.tiktok && <a className="btn btn-icon" target="_blank" rel="noopener noreferrer" aria-label="TikTok de la vitrina" title="TikTok" href={`https://tiktok.com/@${s.tiktok}`}><Music2 size={19} /></a>}
+              <button className="btn btn-icon" aria-label="Compartir vitrina" title="Compartir" onClick={() => share(`${s.name} en Cosland`, toast)}><Share2 size={19} /></button>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          {s.isMine ? (
-            <>
-              <Link href="/mi-vitrina/editar" className="btn btn-ink"><Pencil size={17} />Editar vitrina</Link>
-              <Link href="/publicar" className="btn btn-sakura">Publicar algo nuevo</Link>
-            </>
-          ) : (
-            <>
-              <button className={`btn ${s.isFollowing ? "" : "btn-ink"}`} aria-pressed={s.isFollowing} onClick={() => (me ? follow.mutate({ shopId: s.id }) : needLogin())}>{s.isFollowing ? "Siguiendo" : "Seguir"}</button>
-              <button className="btn" onClick={() => (me ? setContact(true) : needLogin())}><MessageCircle size={17} />Escribir</button>
-              {s.whatsapp && <a className="btn btn-matcha" target="_blank" rel="noopener noreferrer" href={whatsappLink(s.whatsapp, `Hola, vi tu vitrina "${s.name}" en Cosland.`)}>WhatsApp</a>}
-            </>
-          )}
-          {s.instagram && <a className="btn" target="_blank" rel="noopener noreferrer" href={`https://instagram.com/${s.instagram}`}><AtSign size={17} />Instagram</a>}
-          {s.tiktok && <a className="btn" target="_blank" rel="noopener noreferrer" href={`https://tiktok.com/@${s.tiktok}`}>TikTok</a>}
-          <button className="btn" onClick={() => share(`${s.name} en Cosland`, toast)}><Share2 size={17} />Compartir</button>
-        </div>
-
-        <div className="mt-6 grid gap-4 lg:grid-cols-[1.5fr_1fr] items-start">
+        <div className="mt-5 lg:mt-7 grid gap-4 lg:grid-cols-[1.5fr_1fr] items-start">
           {s.bio && <p className="whitespace-pre-line max-w-prose text-[1.05rem]">{s.bio}</p>}
           {s.hasStore && (s.address || s.hours) && (
             <div className="panel p-5">
@@ -137,7 +145,7 @@ export default function ShopPage({ handle }: { handle: string }) {
           )}
         </div>
 
-        <div className="scroll-row mt-9 mb-6">
+        <div className="scroll-row mt-7 lg:mt-9 mb-6">
           {tabBtn("all", `Todo (${s.listingCount})`)}
           {tabBtn("product", "Artículos")}
           {tabBtn("service", "Servicios")}
