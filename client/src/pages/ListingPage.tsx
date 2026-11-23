@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { BadgeCheck, Eye, Flag, Heart, MapPin, MessageCircle, Pencil, Repeat2, Share2, ShieldCheck, ShoppingBag } from "lucide-react";
-import { REPORT_REASONS, categoryOf, conditionLabel, dealLabel, deliveryLabel, formatPrice, shopKindLabel, hasStock, orderStatusLabel } from "@shared/catalog";
+import { REPORT_REASONS, categoryOf, conditionLabel, dealLabel, deliveryLabel, formatPrice, shopKindLabel, hasStock } from "@shared/catalog";
 import { trpc, timeAgo, whatsappLink } from "@/lib/trpc";
 import { useFavorites, useMe } from "@/lib/hooks";
 import { Awning, Avatar, Empty, Field, Loading, Modal, Stars, useToast } from "@/components/ui";
 import { ListingGrid, Photo } from "@/components/cards";
 import ContactModal from "@/components/ContactModal";
 import { SupportModal } from "@/components/Support";
-import OrderModal from "@/components/OrderModal";
+import CheckoutModal, { Reputation, canBuy } from "@/components/Checkout";
 
 export async function share(title: string, toast: (t: string) => void) {
   const url = location.href;
@@ -106,14 +106,17 @@ export default function ListingPage({ id }: { id: number }) {
             <div className="mt-6 grid gap-2.5">
               {l.myOrder ? (
                 <div className="panel p-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <p className="flex-1 basis-48"><b>Ya lo pediste.</b> Estado: {orderStatusLabel(l.myOrder.status).toLowerCase()}.</p>
+                  <p className="flex-1 basis-48"><b>Ya lo compraste.</b> Sigue tu pedido en Pedidos.</p>
                   <Link href="/pedidos" className="btn btn-sm btn-ink">Ver mi pedido</Link>
                 </div>
-              ) : (
-                <button className="btn btn-ink !min-h-13 text-base" style={{ minHeight: "3.25rem" }} disabled={l.status !== "active"} onClick={() => (me ? setModal("order") : needLogin())}>
-                  <ShoppingBag size={19} />{l.kind === "service" ? "Pedir este servicio" : "Lo quiero"}
-                </button>
-              )}
+              ) : canBuy(l.pay) ? (
+                <>
+                  <button className="btn btn-ink !min-h-13 text-base" style={{ minHeight: "3.25rem" }} disabled={l.status !== "active"} onClick={() => (me ? setModal("order") : needLogin())}>
+                    <ShoppingBag size={19} />{l.kind === "service" ? "Pedir este servicio" : "Comprar"}
+                  </button>
+                  <p className="text-sm text-cocoa -mt-1">Acepta {[...new Set(l.pay.methods.map((m) => m.label)), ...(l.pay.onDelivery ? ["pago al recibir"] : [])].join(", ")}.</p>
+                </>
+              ) : null}
               <button className="btn" disabled={l.status !== "active"} onClick={() => (me ? setModal("contact") : needLogin())}>
                 <MessageCircle size={18} />Escribir al vendedor
               </button>
@@ -139,8 +142,8 @@ export default function ListingPage({ id }: { id: number }) {
               <div className="min-w-0">
                 <p className="font-extrabold text-lg flex items-center gap-1"><span className="truncate">{s.name}</span>{s.verified && <BadgeCheck size={17} aria-label="Vitrina verificada" />}</p>
                 <p className="text-sm text-cocoa">{shopKindLabel(s.kind)}{s.city ? `, ${s.city}` : ""}</p>
-                <p className="text-sm mt-0.5 flex items-center gap-2">
-                  {s.reviewCount > 0 ? <><Stars value={s.rating} size={13} /><span className="text-cocoa">{s.rating.toFixed(1)} ({s.reviewCount})</span></> : <span className="text-cocoa">Aún sin reseñas</span>}
+                <p className="text-sm mt-0.5 text-cocoa">
+                  {s.reviewCount > 0 || s.sales > 0 ? <Reputation rating={s.rating} reviewCount={s.reviewCount} sales={s.sales} size={13} /> : "Aún sin reseñas"}
                 </p>
               </div>
               <span className="ml-auto font-bold underline underline-offset-4 shrink-0 text-sm">Ver vitrina</span>
@@ -175,7 +178,7 @@ export default function ListingPage({ id }: { id: number }) {
       )}
 
       {owed && <SupportModal id={owed} title={l.title} onClose={() => setOwed(null)} />}
-      {modal === "order" && <OrderModal item={l} onClose={() => setModal(null)} />}
+      {modal === "order" && <CheckoutModal item={l} onClose={() => setModal(null)} />}
       {modal === "contact" && <ContactModal shopId={s.id} shopName={s.name} listingId={l.id} listingTitle={l.title} withOffer={l.kind === "product"} onClose={() => setModal(null)} />}
       {modal === "report" && (
         <Modal title="Denunciar publicación" onClose={() => setModal(null)}>

@@ -29,6 +29,13 @@
       "when": 1795408176140,
       "tag": "0003_optimal_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1795411147863,
+      "tag": "0004_classy_grandmaster",
+      "breakpoints": true
     }
   ]
 }

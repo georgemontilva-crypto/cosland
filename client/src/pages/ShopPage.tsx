@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { BadgeCheck, Camera, Clock, MapPin, MessageCircle, Music2, Pencil, Phone, Plus, Share2, Star, Store } from "lucide-react";
+import { BadgeCheck, Camera, Clock, MapPin, MessageCircle, Music2, Pencil, Phone, Plus, Share2, Star, Store, Wallet } from "lucide-react";
 import { shopKindLabel } from "@shared/catalog";
 import { trpc, timeAgo, whatsappLink } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
@@ -9,6 +9,7 @@ import { ListingGrid } from "@/components/cards";
 import ContactModal from "@/components/ContactModal";
 import FollowersModal from "@/components/FollowersModal";
 import { SupporterBadge } from "@/components/Support";
+import { Reputation } from "@/components/Checkout";
 import { share } from "./ListingPage";
 
 function Reviews({ shopId, shopName }: { shopId: number; shopName: string }) {
@@ -29,13 +30,13 @@ function Reviews({ shopId, shopName }: { shopId: number; shopName: string }) {
         {q.data?.items.length ? q.data.items.map((r) => (
           <article key={r.id} className="soft p-5">
             <div className="flex items-center justify-between gap-3">
-              <p className="font-extrabold">{r.author}</p>
+              <p className="font-extrabold flex flex-wrap items-center gap-x-2 gap-y-1">{r.author}{r.verified && <span className="tag" style={{ background: "#cde4be" }}><BadgeCheck size={12} strokeWidth={2.4} />Compra verificada</span>}</p>
               <Stars value={r.rating} />
             </div>
             {r.comment && <p className="mt-2 whitespace-pre-line">{r.comment}</p>}
             <p className="text-sm text-cocoa mt-2">{timeAgo(r.createdAt)}</p>
           </article>
-        )) : <Empty title="Aún sin reseñas">Las reseñas las dejan quienes ya le escribieron a {shopName} por una compra.</Empty>}
+        )) : <Empty title="Aún sin reseñas">Las reseñas las dejan quienes ya le compraron o le escribieron a {shopName}.</Empty>}
       </div>
       <div className="panel p-5">
         <h3 className="text-lg">Deja tu reseña</h3>
@@ -100,7 +101,7 @@ export default function ShopPage({ handle }: { handle: string }) {
               <span>{shopKindLabel(s.kind)}</span>
               {s.supporter && <SupporterBadge />}
               {s.city && <span className="inline-flex items-center gap-1"><MapPin size={15} />{s.city}{s.country ? `, ${s.country}` : ""}</span>}
-              {s.reviewCount > 0 && <span className="inline-flex items-center gap-1.5"><Stars value={s.rating} size={14} />{s.rating.toFixed(1)} ({s.reviewCount})</span>}
+              <Reputation rating={s.rating} reviewCount={s.reviewCount} sales={s.sales} />
               <button className="font-bold text-ink underline underline-offset-4" onClick={() => setFollowers(true)}>{s.followers} {s.followers === 1 ? "seguidor" : "seguidores"}</button>
             </p>
           </div>
@@ -131,7 +132,12 @@ export default function ShopPage({ handle }: { handle: string }) {
         </div>
 
         <div className="mt-5 lg:mt-7 grid gap-4 lg:grid-cols-[1.5fr_1fr] items-start">
-          {s.bio && <p className="whitespace-pre-line max-w-prose text-[1.05rem]">{s.bio}</p>}
+          <div>
+            {s.bio && <p className="whitespace-pre-line max-w-prose text-[1.05rem]">{s.bio}</p>}
+            {(s.pay.methods.length > 0 || s.pay.onDelivery) && (
+              <p className="text-sm text-cocoa mt-3 flex items-start gap-2"><Wallet size={16} className="shrink-0 mt-0.5" /><span>Acepta {[...new Set(s.pay.methods.map((m) => m.label)), ...(s.pay.onDelivery ? ["pago al recibir"] : [])].join(", ")}.</span></p>
+            )}
+          </div>
           {s.hasStore && (s.address || s.hours) && (
             <div className="panel p-5">
               <h2 className="text-lg flex items-center gap-2"><Store size={19} />Tienda física</h2>

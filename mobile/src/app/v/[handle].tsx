@@ -2,16 +2,17 @@ import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Image } from "expo-image";
-import { BadgeCheck, Camera, Clock, MapPin, MessageCircle, Music2, Pencil, Phone, Plus, Share2, Star, Store } from "lucide-react-native";
+import { BadgeCheck, Camera, Clock, MapPin, MessageCircle, Music2, Pencil, Phone, Plus, Share2, Star, Store, Wallet } from "lucide-react-native";
 import { shopKindLabel } from "@shared/catalog";
 import { errText, img, timeAgo, trpc, whatsappLink } from "@/lib/api";
 import { openExternal, shareLink } from "@/lib/actions";
 import { requireLogin, useSession } from "@/lib/session";
 import { BORDER, C } from "@/lib/theme";
-import { Awning, Avatar, Btn, Chip, Empty, Field, IconBtn, Input, Loading, Screen, Stars, T, panel, soft, useToast } from "@/ui/core";
+import { Awning, Avatar, Btn, Chip, Empty, Field, IconBtn, Input, Loading, Screen, Stars, T, Tag, panel, soft, useToast } from "@/ui/core";
 import { Grid, PAD } from "@/ui/cards";
 import ContactSheet from "@/ui/ContactSheet";
 import FollowersSheet from "@/ui/FollowersSheet";
+import { Reputation, canBuy, payList } from "@/ui/Checkout";
 
 function Reviews({ shopId, shopName, handle }: { shopId: number; shopName: string; handle: string }) {
   const { me } = useSession();
@@ -48,10 +49,11 @@ function Reviews({ shopId, shopName, handle }: { shopId: number; shopName: strin
       {q.data?.items.length ? q.data.items.map((r) => (
         <View key={r.id} style={[soft, { padding: 18 }]}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}><T w="black" style={{ flex: 1 }}>{r.author}</T><Stars value={r.rating} /></View>
+          {r.verified ? <View style={{ flexDirection: "row", marginTop: 6 }}><Tag label="Compra verificada" bg={C.matcha} icon={<BadgeCheck size={12} color={C.ink} strokeWidth={2.4} />} /></View> : null}
           {r.comment ? <T style={{ marginTop: 6 }}>{r.comment}</T> : null}
           <T size={13} color={C.cocoa} style={{ marginTop: 6 }}>{timeAgo(r.createdAt)}</T>
         </View>
-      )) : <Empty title="Aún sin reseñas" text={`Las dejan quienes ya le escribieron a ${shopName} por una compra.`} />}
+      )) : <Empty title="Aún sin reseñas" text={`Las dejan quienes ya le compraron o le escribieron a ${shopName}.`} />}
     </View>
   );
 }
@@ -97,7 +99,7 @@ export default function ShopScreen() {
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 14, rowGap: 3, marginTop: 6 }}>
           <T color={C.cocoa}>{shopKindLabel(s.kind)}</T>
           {s.city ? <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}><MapPin size={15} color={C.cocoa} /><T color={C.cocoa}>{s.city}{s.country ? `, ${s.country}` : ""}</T></View> : null}
-          {s.reviewCount > 0 && <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}><Stars value={s.rating} size={14} /><T color={C.cocoa}>{s.rating.toFixed(1)} ({s.reviewCount})</T></View>}
+          <Reputation rating={s.rating} reviewCount={s.reviewCount} sales={s.sales} />
           <Pressable accessibilityRole="button" accessibilityLabel={`${s.followers} ${s.followers === 1 ? "seguidor" : "seguidores"}, ver quiénes son`} onPress={() => setFollowers(true)} hitSlop={8}>
             <T w="bold" style={{ textDecorationLine: "underline" }}>{s.followers} {s.followers === 1 ? "seguidor" : "seguidores"}</T>
           </Pressable>
@@ -118,6 +120,9 @@ export default function ShopScreen() {
         </View>
 
         {s.bio ? <T size={16} style={{ marginTop: 16 }}>{s.bio}</T> : null}
+        {canBuy(s.pay) ? (
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}><Wallet size={16} color={C.cocoa} style={{ marginTop: 2 }} /><T size={14} color={C.cocoa} style={{ flex: 1 }}>Acepta {payList(s.pay)}.</T></View>
+        ) : null}
         {s.hasStore && (s.address || s.hours) ? (
           <View style={[panel, { padding: 18, marginTop: 18, gap: 8 }]}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Store size={19} color={C.ink} /><T w="black" size={17}>Tienda física</T></View>

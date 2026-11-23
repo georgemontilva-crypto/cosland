@@ -2,16 +2,16 @@ import { useState } from "react";
 import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ArrowLeft, BadgeCheck, Eye, Flag, Heart, MapPin, MessageCircle, Pencil, Repeat2, Share2, ShieldCheck, Phone, ShoppingBag } from "lucide-react-native";
+import { ArrowLeft, BadgeCheck, Eye, Flag, Heart, MapPin, MessageCircle, Pencil, Repeat2, Share2, ShieldCheck, Phone, ShoppingBag, Wallet } from "lucide-react-native";
 import { REPORT_REASONS, categoryOf, conditionLabel, dealLabel, deliveryLabel, formatPrice, shopKindLabel, hasStock } from "@shared/catalog";
 import { errText, timeAgo, trpc, whatsappLink } from "@/lib/api";
 import { openExternal, shareLink } from "@/lib/actions";
 import { requireLogin, useFavorites, useSession } from "@/lib/session";
 import { BORDER, C } from "@/lib/theme";
-import { Awning, Avatar, Btn, Empty, Field, H2, IconBtn, Input, Loading, Photo, Screen, Select, Sheet, Stars, T, Tag, panel, soft, useToast } from "@/ui/core";
+import { Awning, Avatar, Btn, Empty, Field, H2, IconBtn, Input, Loading, Photo, Screen, Select, Sheet, T, Tag, panel, soft, useToast } from "@/ui/core";
 import { Grid, PAD } from "@/ui/cards";
 import ContactSheet from "@/ui/ContactSheet";
-import OrderSheet from "@/ui/OrderSheet";
+import CheckoutSheet, { Reputation, canBuy, payList } from "@/ui/Checkout";
 
 export default function ListingScreen() {
   const id = Number(useLocalSearchParams<{ id: string }>().id);
@@ -100,13 +100,17 @@ export default function ListingScreen() {
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}><T w="black" size={17} numberOfLines={1} style={{ flexShrink: 1 }}>{s.name}</T>{s.verified && <BadgeCheck size={16} color={C.ink} />}</View>
                 <T size={13.5} color={C.cocoa} numberOfLines={1}>{shopKindLabel(s.kind)}{s.city ? `, ${s.city}` : ""}</T>
-                {s.reviewCount > 0
-                  ? <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}><Stars value={s.rating} size={13} /><T size={13} color={C.cocoa}>{s.rating.toFixed(1)} ({s.reviewCount})</T></View>
+                {s.reviewCount > 0 || s.sales > 0
+                  ? <View style={{ marginTop: 2 }}><Reputation rating={s.rating} reviewCount={s.reviewCount} sales={s.sales} size={13} /></View>
                   : <T size={13} color={C.cocoa}>Aún sin reseñas</T>}
               </View>
               <T w="bold" size={13.5} style={{ textDecorationLine: "underline" }}>Ver vitrina</T>
             </View>
           </Pressable>
+
+          {canBuy(l.pay) && !l.isMine ? (
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 14 }}><Wallet size={16} color={C.cocoa} style={{ marginTop: 2 }} /><T size={14} color={C.cocoa} style={{ flex: 1 }}>Acepta {payList(l.pay)}.</T></View>
+          ) : null}
 
           <H2 style={{ marginTop: 26, marginBottom: 6 }}>Descripción</H2>
           <T size={16}>{l.description}</T>
@@ -145,12 +149,14 @@ export default function ListingScreen() {
           ) : null}
           {l.myOrder
             ? <Btn label="Ver mi pedido" kind="yuzu" grow style={{ minHeight: 50 }} icon={<ShoppingBag size={18} color={C.ink} />} onPress={() => router.push("/pedidos")} />
-            : <Btn label={l.kind === "service" ? "Pedir este servicio" : "Lo quiero"} kind="ink" grow disabled={l.status !== "active"} style={{ minHeight: 50 }}
-                icon={<ShoppingBag size={18} color={C.cream} />} onPress={() => (me ? setOrdering(true) : login())} />}
+            : canBuy(l.pay)
+              ? <Btn label={l.kind === "service" ? "Pedir este servicio" : "Comprar"} kind="ink" grow disabled={l.status !== "active"} style={{ minHeight: 50 }}
+                  icon={<ShoppingBag size={18} color={C.cream} />} onPress={() => (me ? setOrdering(true) : login())} />
+              : <Btn label="Escribir al vendedor" kind="ink" grow disabled={l.status !== "active"} style={{ minHeight: 50 }} onPress={() => (me ? setContact(true) : login())} />}
         </View>
       )}
 
-      <OrderSheet open={ordering} onClose={() => setOrdering(false)} item={l} />
+      <CheckoutSheet open={ordering} onClose={() => setOrdering(false)} item={l} />
       <ContactSheet open={contact} onClose={() => setContact(false)} shopId={s.id} shopName={s.name} listingId={l.id} listingTitle={l.title} withOffer={l.kind === "product"} />
       <Sheet open={reporting} onClose={() => setReporting(false)} title="Denunciar publicación">
         <View style={{ gap: 16 }}>

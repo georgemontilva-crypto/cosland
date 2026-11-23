@@ -7,13 +7,14 @@ import { db } from "./db";
 import { publish, touch, T } from "./realtime";
 import { deleteImages } from "./storage";
 import {
-  users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports, contributions, settings, orders,
+  users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports, contributions, settings, orders, shopPayments,
 } from "./schema";
 import {
   router, publicProcedure, authedProcedure, adminProcedure, signSession, wantsToken, COOKIE,
 } from "./trpc";
 import {
   ACCENT_IDS, CATEGORY_IDS, CONDITION_IDS, DEAL_IDS, DELIVERY_IDS, SHOP_KIND_IDS, REPORT_REASONS, categoryOf, hasStock,
+  PAY_TYPE_IDS, PAY_ON_DELIVERY, payTypeLabel,
 } from "../shared/catalog";
 
 const fail = (code: TRPCError["code"], message: string) => new TRPCError({ code, message });
@@ -54,6 +55,7 @@ const shopStats = {
   followers: n(sql`(select count(*) from follows f where f.shop_id = shops.id)`),
   rating: n(sql`(select coalesce(avg(r.rating), 0) from reviews r where r.shop_id = shops.id)`),
   reviewCount: n(sql`(select count(*) from reviews r where r.shop_id = shops.id)`),
+  sales: n(sql`(select count(*) from orders o where o.shop_id = shops.id and o.status in ('delivered', 'completed'))`),
   // Apoya a Cosland: tiene algún aporte confirmado o el administrador le dio la insignia
   supporter: n(sql`((select count(*) from contributions c where c.shop_id = shops.id and c.status = 'confirmed') + shops.support_badge)`),
 };
@@ -88,8 +90,10 @@ const authRouter = router({
     }
     // Pedidos que esperan algo de esta persona: por aceptar (si vende) o por confirmar recibido (si compró)
     const [toDo] = await db.select({ c: n(sql`count(*)`) }).from(orders).where(or(
-      and(eq(orders.buyerId, ctx.user.id), eq(orders.status, "delivered")),
-      shop ? and(eq(orders.shopId, shop.id), eq(orders.status, "pending")) : undefined,
+      // Como comprador: confirmar que llegó, o pagar lo que eligió pagar por adelantado
+      and(eq(orders.buyerId, ctx.user.id), or(eq(orders.status, "delivered"), and(eq(orders.status, "accepted"), eq(orders.payStatus, "unpaid")))),
+      // Como vendedor: confirmar un pago o entregar
+      shop ? and(eq(orders.shopId, shop.id), or(eq(orders.status, "pending"), and(eq(orders.status, "accepted"), ne(orders.payStatus, "unpaid")))) : undefined,
     ));
     return {
       ...ctx.user, unread, orders: toDo?.c ?? 0,
@@ -179,7 +183,10 @@ const authRouter = router({
     await db.delete(reviews).where(eq(reviews.authorId, u.id));
     await db.delete(wanted).where(eq(wanted.userId, u.id));
     await db.delete(reports).where(eq(reports.reporterId, u.id));
-    if (shop) await db.delete(shops).where(eq(shops.id, shop.id));
+    if (shop) {
+      await db.delete(shopPayments).where(eq(shopPayments.shopId, shop.id));
+      await db.delete(shops).where(eq(shops.id, shop.id));
+    }
     await db.delete(users).where(eq(users.id, u.id));
     await deleteImages(photos);
     ctx.res.clearCookie(COOKIE, { path: "/" });
@@ -237,7 +244,10 @@ const shopRouter = router({
       isFollowing = Boolean(f);
     }
     const { userId, ...shop } = s.shop;
-    return { ...shop, listingCount: s.listingCount, followers: s.followers, rating: s.rating, reviewCount: s.reviewCount, supporter: s.supporter > 0, isFollowing, isMine: ctx.user?.id === userId };
+    return {
+      ...shop, listingCount: s.listingCount, followers: s.followers, rating: s.rating, reviewCount: s.reviewCount, sales: s.sales, supporter: s.supporter > 0,
+      isFollowing, isMine: ctx.user?.id === userId, pay: await payOptions(s.shop.id, s.shop.payOnDelivery),
+    };
   }),
 
   list: publicProcedure
@@ -256,6 +266,37 @@ const shopRouter = router({
         ...shopStats,
       }).from(shops).where(where.length ? and(...where) : undefined)
         .orderBy(desc(shops.verified), desc(shopStats.listingCount), desc(shops.id)).limit(60);
+    }),
+
+  // Cómo cobra mi vitrina: los datos completos solo los ve el dueño (y quien le compra, en su pedido)
+  payments: authedProcedure.query(async ({ ctx }) => {
+    const shop = await shopOf(ctx.user.id);
+    if (!shop) return null;
+    const methods = await db.select({ id: shopPayments.id, type: shopPayments.type, details: shopPayments.details }).from(shopPayments)
+      .where(eq(shopPayments.shopId, shop.id)).orderBy(asc(shopPayments.id));
+    return { methods, payOnDelivery: shop.payOnDelivery };
+  }),
+
+  savePayments: authedProcedure
+    .input(z.object({
+      payOnDelivery: z.boolean(),
+      methods: z.array(z.object({ id: z.number().int().optional(), type: z.enum(PAY_TYPE_IDS), details: z.string().trim().min(4, "Escribe los datos para que te puedan pagar").max(600) })).max(8, "Máximo 8 métodos de pago"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const shop = await shopOf(ctx.user.id);
+      if (!shop) throw fail("PRECONDITION_FAILED", "Crea tu vitrina primero.");
+      const current = await db.select({ id: shopPayments.id }).from(shopPayments).where(eq(shopPayments.shopId, shop.id));
+      const mine = new Set(current.map((m) => m.id));
+      const kept = new Set<number>();
+      for (const m of input.methods) {
+        if (m.id && mine.has(m.id)) { kept.add(m.id); await db.update(shopPayments).set({ type: m.type, details: m.details }).where(eq(shopPayments.id, m.id)); }
+        else await db.insert(shopPayments).values({ shopId: shop.id, type: m.type, details: m.details });
+      }
+      const gone = [...mine].filter((id) => !kept.has(id));
+      if (gone.length) await db.delete(shopPayments).where(inArray(shopPayments.id, gone));
+      await db.update(shops).set({ payOnDelivery: input.payOnDelivery }).where(eq(shops.id, shop.id));
+      touch(T.shop(shop.id));
+      return { ok: true };
     }),
 
   toggleFollow: authedProcedure.input(z.object({ shopId: z.number().int() })).mutation(async ({ ctx, input }) => {
@@ -415,8 +456,8 @@ const listingRouter = router({
       myOrder = o ?? null;
     }
     return {
-      ...row.listing, isMine, isFavorite, more, myOrder,
-      shop: { ...shop, listingCount: row.listingCount, followers: row.followers, rating: row.rating, reviewCount: row.reviewCount },
+      ...row.listing, isMine, isFavorite, more, myOrder, pay: await payOptions(row.shop.id, row.shop.payOnDelivery),
+      shop: { ...shop, listingCount: row.listingCount, followers: row.followers, rating: row.rating, reviewCount: row.reviewCount, sales: row.sales },
     };
   }),
 
@@ -644,33 +685,65 @@ async function releaseStock(listingId: number, quantity: number) {
   await db.update(listings).set({ stock: sql`${listings.stock} + ${quantity}`, ...(l.status === "sold" ? { status: "active" as const } : {}) }).where(eq(listings.id, listingId));
 }
 
+// Cómo se puede pagar en una vitrina (sin los datos, que son solo para quien compra)
+async function payOptions(shopId: number, onDelivery: boolean) {
+  const methods = await db.select({ id: shopPayments.id, type: shopPayments.type }).from(shopPayments).where(eq(shopPayments.shopId, shopId)).orderBy(asc(shopPayments.id));
+  return { methods: methods.map((m) => ({ id: m.id, type: m.type, label: payTypeLabel(m.type) || "Otro" })), onDelivery };
+}
+
 const orderRouter = router({
-  // El comprador toca "Lo quiero": queda el pedido y se abre el chat con el vendedor
+  // Comprar: queda el pedido, se apartan las unidades y se abre el chat para cuadrar la entrega.
+  // No hay paso de "aceptar": si el vendedor no puede cumplir, cancela.
   create: authedProcedure
-    .input(z.object({ listingId: z.number().int(), quantity: z.number().int().min(1).max(99).default(1), note: optText(500) }))
+    .input(z.object({
+      listingId: z.number().int(), quantity: z.number().int().min(1).max(99).default(1), note: optText(500),
+      // id de un método de pago del vendedor, o "delivery" para pagar al recibir
+      pay: z.union([z.number().int(), z.literal("delivery")]).optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
-      const [row] = await db.select({ l: listings, shopId: shops.id, ownerId: shops.userId }).from(listings)
+      const [row] = await db.select({ l: listings, shopId: shops.id, ownerId: shops.userId, onDelivery: shops.payOnDelivery }).from(listings)
         .innerJoin(shops, eq(shops.id, listings.shopId)).where(eq(listings.id, input.listingId)).limit(1);
       if (!row || row.l.status !== "active") throw fail("BAD_REQUEST", "Esta publicación ya no está disponible.");
       if (row.ownerId === ctx.user.id) throw fail("BAD_REQUEST", "Esta publicación es tuya.");
+      // Un pedido en curso por publicación y persona
+      const [open] = await db.select({ id: orders.id, conversationId: orders.conversationId, payStatus: orders.payStatus }).from(orders)
+        .where(and(eq(orders.listingId, row.l.id), eq(orders.buyerId, ctx.user.id), inArray(orders.status, ["pending", "accepted"]))).limit(1);
+      if (open) return { id: open.id, conversationId: open.conversationId, existing: true, toPay: open.payStatus === "unpaid" };
+
+      // Cómo va a pagar
+      const options = await payOptions(row.shopId, row.onDelivery);
+      let method: { id: number; label: string } | null = null;
+      if (typeof input.pay === "number") {
+        method = options.methods.find((m) => m.id === input.pay) ?? null;
+        if (!method) throw fail("BAD_REQUEST", "Ese método de pago ya no está disponible. Elige otro.");
+      } else if (input.pay === "delivery" || input.pay === undefined) {
+        if (!options.onDelivery) {
+          if (input.pay === "delivery" || !options.methods.length) throw fail("BAD_REQUEST", options.methods.length ? "Esta vitrina no acepta pago al recibir. Elige un método de pago." : "Esta vitrina aún no tiene formas de pago. Escríbele para acordar la compra.");
+          method = options.methods[0];
+        }
+      }
+
       const stocked = hasStock(row.l.kind, row.l.deal);
       const quantity = stocked ? input.quantity : 1;
-      if (stocked && quantity > row.l.stock) throw fail("BAD_REQUEST", row.l.stock === 1 ? "Solo queda una unidad." : `Solo quedan ${row.l.stock} unidades.`);
-      // Un pedido en curso por publicación y persona
-      const [open] = await db.select({ id: orders.id, conversationId: orders.conversationId }).from(orders)
-        .where(and(eq(orders.listingId, row.l.id), eq(orders.buyerId, ctx.user.id), inArray(orders.status, ["pending", "accepted"]))).limit(1);
-      if (open) return { id: open.id, conversationId: open.conversationId, existing: true };
-
+      if (stocked) {
+        // Se apartan las unidades en el momento; si otra persona se adelantó, no alcanza
+        const [r] = await db.update(listings).set({ stock: sql`${listings.stock} - ${quantity}` }).where(and(eq(listings.id, row.l.id), gte(listings.stock, quantity), eq(listings.status, "active")));
+        if (!r.affectedRows) throw fail("BAD_REQUEST", row.l.stock <= 1 ? "Solo queda una unidad." : `Solo quedan ${row.l.stock} unidades.`);
+        await db.update(listings).set({ status: "sold" }).where(and(eq(listings.id, row.l.id), lte(listings.stock, 0), eq(listings.status, "active")));
+      }
       const conversationId = await openConversation(ctx.user.id, row.shopId);
+      const payLabel = method ? method.label : PAY_ON_DELIVERY;
       const [r] = await db.insert(orders).values({
         listingId: row.l.id, shopId: row.shopId, buyerId: ctx.user.id, conversationId,
         title: row.l.title, unitPriceCents: row.l.priceCents, quantity, note: input.note,
+        status: "accepted", payMethodId: method?.id ?? null, payLabel, payStatus: method ? "unpaid" : "on_delivery",
       });
       const what = quantity > 1 ? `${quantity} unidades de "${row.l.title}"` : `"${row.l.title}"`;
-      await postMessage(conversationId, ctx.user.id, false, `Hola, quiero ${row.l.kind === "service" ? "pedir" : "comprar"} ${what}.${input.note ? `\n${input.note}` : ""}`, row.l.id, null, true);
-      publish([row.ownerId], "order", { id: r.insertId, text: `Nuevo pedido de ${ctx.user.name.split(" ")[0]}: ${row.l.title}` });
-      touch(T.admin);
-      return { id: r.insertId, conversationId, existing: false };
+      await postMessage(conversationId, ctx.user.id, false,
+        `Hola, ${row.l.kind === "service" ? "pedí" : "compré"} ${what}. Pago: ${payLabel}. ¿Cómo cuadramos la entrega?${input.note ? `\n${input.note}` : ""}`, row.l.id, null, true);
+      publish([row.ownerId], "order", { id: r.insertId, text: `Nueva compra de ${ctx.user.name.split(" ")[0]}: ${row.l.title}` });
+      touch(T.listing(row.l.id), T.shop(row.shopId), T.feed, T.admin);
+      return { id: r.insertId, conversationId, existing: false, toPay: Boolean(method) };
     }),
 
   // Mis compras y mis ventas
@@ -679,25 +752,49 @@ const orderRouter = router({
     const rows = await db.select({
       id: orders.id, status: orders.status, title: orders.title, quantity: orders.quantity, unitPriceCents: orders.unitPriceCents, note: orders.note,
       createdAt: orders.createdAt, updatedAt: orders.updatedAt, listingId: orders.listingId, conversationId: orders.conversationId,
-      buyerId: orders.buyerId, buyerName: users.name, shopName: shops.name, shopHandle: shops.handle, shopAccent: shops.accent,
-      images: listings.images, deal: listings.deal,
+      payLabel: orders.payLabel, payStatus: orders.payStatus, payReference: orders.payReference, payProofUrl: orders.payProofUrl, payMethodId: orders.payMethodId,
+      buyerId: orders.buyerId, buyerName: users.name, shopId: orders.shopId, shopName: shops.name, shopHandle: shops.handle, shopAccent: shops.accent,
+      images: listings.images, deal: listings.deal, payDetails: shopPayments.details,
     }).from(orders)
       .innerJoin(shops, eq(shops.id, orders.shopId)).innerJoin(users, eq(users.id, orders.buyerId)).leftJoin(listings, eq(listings.id, orders.listingId))
+      .leftJoin(shopPayments, eq(shopPayments.id, orders.payMethodId))
       .where(or(eq(orders.buyerId, ctx.user.id), shop ? eq(orders.shopId, shop.id) : undefined))
       .orderBy(desc(orders.id)).limit(200);
-    const view = ({ buyerId, buyerName, images, ...o }: (typeof rows)[number]) => ({ ...o, image: images?.[0] ?? null, buyerName: buyerName.split(" ")[0] });
+    // Qué reseñas ya dejó, para ofrecer la que falte
+    const reviewed = new Set((await db.select({ shopId: reviews.shopId }).from(reviews).where(eq(reviews.authorId, ctx.user.id))).map((r) => r.shopId));
+    const view = (asBuyer: boolean) => ({ buyerId, buyerName, images, payDetails, payMethodId, shopId, ...o }: (typeof rows)[number]) => ({
+      ...o, shopId, image: images?.[0] ?? null, buyerName: buyerName.split(" ")[0],
+      // Los datos para pagar solo se le muestran al comprador mientras el pedido sigue en curso
+      payDetails: asBuyer && o.status === "accepted" && (o.payStatus === "unpaid" || o.payStatus === "reported") ? payDetails : null,
+      reviewed: asBuyer ? reviewed.has(shopId) : false,
+    });
     return {
       hasShop: Boolean(shop),
-      buying: rows.filter((o) => o.buyerId === ctx.user.id).map(view),
-      selling: shop ? rows.filter((o) => o.buyerId !== ctx.user.id).map(view) : [],
+      buying: rows.filter((o) => o.buyerId === ctx.user.id).map(view(true)),
+      selling: shop ? rows.filter((o) => o.buyerId !== ctx.user.id).map(view(false)) : [],
     };
   }),
 
-  // Cada paso del pedido. Quién puede hacer qué depende del estado.
-  act: authedProcedure
-    .input(z.object({ id: z.number().int(), action: z.enum(["accept", "reject", "cancel", "deliver", "receive"]) }))
+  // El comprador avisa que ya pagó (con referencia o comprobante)
+  pay: authedProcedure
+    .input(z.object({ id: z.number().int(), reference: optText(120), proofUrl: imageUrl.optional().nullable() }))
     .mutation(async ({ ctx, input }) => {
       const [row] = await db.select({ o: orders, ownerId: shops.userId }).from(orders).innerJoin(shops, eq(shops.id, orders.shopId)).where(eq(orders.id, input.id)).limit(1);
+      if (!row || row.o.buyerId !== ctx.user.id) throw fail("NOT_FOUND", "No encontramos ese pedido.");
+      if (row.o.status !== "accepted" || row.o.payStatus === "confirmed") throw fail("CONFLICT", "Ese pedido ya cambió. Mira cómo quedó.");
+      if (!input.reference && !input.proofUrl) throw fail("BAD_REQUEST", "Pon el número de referencia o sube el comprobante.");
+      await db.update(orders).set({ payStatus: "reported", payReference: input.reference, payProofUrl: input.proofUrl ?? null, paidAt: new Date() }).where(eq(orders.id, row.o.id));
+      if (row.o.conversationId) await postMessage(row.o.conversationId, ctx.user.id, false, `Ya pagué "${row.o.title}"${input.reference ? `. Referencia: ${input.reference}` : ""}.`, row.o.listingId, null, true);
+      publish([row.ownerId], "order", { id: row.o.id, text: `${ctx.user.name.split(" ")[0]} avisó que ya pagó: ${row.o.title}` });
+      touch(T.admin);
+      return { ok: true };
+    }),
+
+  // Cada paso del pedido. Quién puede hacer qué depende del estado.
+  act: authedProcedure
+    .input(z.object({ id: z.number().int(), action: z.enum(["accept", "reject", "cancel", "confirmPay", "deliver", "receive"]) }))
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await db.select({ o: orders, ownerId: shops.userId, shopName: shops.name }).from(orders).innerJoin(shops, eq(shops.id, orders.shopId)).where(eq(orders.id, input.id)).limit(1);
       const isSeller = row?.ownerId === ctx.user.id, isBuyer = row?.o.buyerId === ctx.user.id;
       if (!row || (!isSeller && !isBuyer)) throw fail("NOT_FOUND", "No encontramos ese pedido.");
       const o = row.o;
@@ -708,44 +805,52 @@ const orderRouter = router({
         const [r] = await db.update(orders).set({ status: to, ...extra }).where(and(eq(orders.id, o.id), inArray(orders.status, from)));
         if (!r.affectedRows) throw stale(); // otra pestaña o la otra persona se adelantó
       };
-      let say = "", contributionId: number | null = null;
+      let say = "", note = "", contributionId: number | null = null;
+      const who = isSeller ? row.shopName : ctx.user.name.split(" ")[0];
 
       if (input.action === "accept" && isSeller) {
+        // Solo para pedidos del flujo anterior, que esperaban aceptación
         if (o.status !== "pending") throw stale();
         if (stocked) {
-          // Se apartan las unidades; si ya no alcanzan, no se puede aceptar
           const [r] = await db.update(listings).set({ stock: sql`${listings.stock} - ${o.quantity}` }).where(and(eq(listings.id, o.listingId), gte(listings.stock, o.quantity)));
           if (!r.affectedRows) throw fail("BAD_REQUEST", "Ya no te quedan suficientes unidades para este pedido. Repón la cantidad en la publicación o recházalo.");
         }
         try { await move(["pending"], "accepted"); } catch (e) { if (stocked) await releaseStock(o.listingId, o.quantity); throw e; }
         if (stocked) await db.update(listings).set({ status: "sold" }).where(and(eq(listings.id, o.listingId), lte(listings.stock, 0), eq(listings.status, "active")));
-        say = `Acepté tu pedido de "${o.title}". Cuéntame cómo prefieres pagar y recibirlo.`;
+        say = `Acepté tu pedido de "${o.title}". Cuéntame cómo prefieres pagar y recibirlo.`; note = `${who} aceptó tu pedido`;
       } else if (input.action === "reject" && isSeller) {
         await move(["pending"], "rejected");
-        say = `No puedo atender el pedido de "${o.title}".`;
+        say = `No puedo atender el pedido de "${o.title}".`; note = `${who} no pudo atender tu pedido`;
       } else if (input.action === "cancel" && (isBuyer || isSeller)) {
-        const from: (typeof o.status)[] = isBuyer ? ["pending", "accepted"] : ["accepted"];
-        if (!from.includes(o.status)) throw stale();
-        await move(from, "cancelled");
+        // El comprador cancela mientras no haya pagado; el vendedor, mientras no haya entregado
+        if (!["pending", "accepted"].includes(o.status)) throw stale();
+        if (isBuyer && !isSeller && (o.payStatus === "reported" || o.payStatus === "confirmed")) throw fail("BAD_REQUEST", "Ya avisaste que pagaste. Escríbele al vendedor para cancelar y acordar la devolución.");
+        if (isSeller && o.status === "pending") throw stale();
+        await move([o.status], "cancelled");
         if (o.status === "accepted") await releaseStock(o.listingId, o.quantity);
-        say = `Cancelé el pedido de "${o.title}".`;
+        say = `Cancelé el pedido de "${o.title}".`; note = `${who} canceló el pedido: ${o.title}`;
+      } else if (input.action === "confirmPay" && isSeller) {
+        if (o.status !== "accepted" || o.payStatus === "confirmed") throw stale();
+        await db.update(orders).set({ payStatus: "confirmed", paidAt: o.paidAt ?? new Date() }).where(eq(orders.id, o.id));
+        say = `Confirmé tu pago de "${o.title}".`; note = `${who} confirmó tu pago`;
       } else if (input.action === "deliver" && isSeller) {
-        await move(["accepted"], "delivered", { deliveredAt: new Date() });
+        await move(["accepted"], "delivered", { deliveredAt: new Date(), ...(o.payStatus === "on_delivery" ? {} : { payStatus: "confirmed" as const }) });
         // La venta se cerró: si la publicación llevaba el dólar para Cosland, queda el aporte de este pedido
         if (l?.supportsApp && (await getSettings()).enabled) {
           const [r] = await db.insert(contributions).values({ shopId: o.shopId, listingId: o.listingId, orderId: o.id, amountCents: SUPPORT_CENTS * o.quantity });
           contributionId = r.insertId;
         }
-        say = `Marqué como entregado tu pedido de "${o.title}". Cuando lo tengas, confírmalo en Pedidos.`;
+        say = `Marqué como entregado tu pedido de "${o.title}". Cuando lo tengas, confírmalo en Pedidos.`; note = `${who} marcó tu pedido como entregado`;
       } else if (input.action === "receive" && isBuyer) {
         await move(["delivered"], "completed");
-        say = `Confirmé que recibí "${o.title}". ¡Gracias!`;
+        say = `Confirmé que recibí "${o.title}". ¡Gracias!`; note = `${who} confirmó que recibió: ${o.title}`;
       } else throw fail("FORBIDDEN", "No puedes hacer eso con este pedido.");
 
-      if (o.conversationId) await postMessage(o.conversationId, ctx.user.id, isSeller, say, o.listingId);
-      publish([isSeller ? o.buyerId : row.ownerId], "order", { id: o.id });
-      touch(T.listing(o.listingId), T.shop(o.shopId), T.feed, T.admin, contributionId ? T.support : null);
-      return { ok: true, contributionId };
+      // El paso queda escrito en el chat, y a la otra persona le llega un solo aviso
+      if (o.conversationId) await postMessage(o.conversationId, ctx.user.id, isSeller, say, o.listingId, null, true);
+      publish([isSeller ? o.buyerId : row.ownerId], "order", { id: o.id, text: note });
+      touch(T.listing(o.listingId), T.shop(o.shopId), T.shops, T.feed, T.admin, contributionId ? T.support : null);
+      return { ok: true, contributionId, shopId: o.shopId };
     }),
 });
 
@@ -753,7 +858,7 @@ const orderRouter = router({
 async function canReview(userId: number, shopId: number) {
   const [shop] = await db.select({ userId: shops.userId }).from(shops).where(eq(shops.id, shopId)).limit(1);
   if (!shop || shop.userId === userId) return false;
-  // Solo opina quien ya conversó con la vitrina
+  // Opina quien ya conversó con la vitrina o le compró
   const [c] = await db.select({ id: conversations.id }).from(conversations)
     .where(and(eq(conversations.buyerId, userId), eq(conversations.shopId, shopId))).limit(1);
   return Boolean(c);
@@ -764,6 +869,8 @@ const reviewRouter = router({
     canReview: ctx.user ? await canReview(ctx.user.id, input.shopId) : false,
     items: await db.select({
       id: reviews.id, rating: reviews.rating, comment: reviews.comment, createdAt: reviews.createdAt, author: users.name, authorId: reviews.authorId,
+      // Compra verificada: quien opina tiene un pedido entregado en esta vitrina
+      verified: sql<number>`exists (select 1 from orders o where o.shop_id = ${reviews.shopId} and o.buyer_id = ${reviews.authorId} and o.status in ('delivered', 'completed'))`.mapWith(Boolean),
     }).from(reviews).innerJoin(users, eq(users.id, reviews.authorId)).where(eq(reviews.shopId, input.shopId)).orderBy(desc(reviews.id)).limit(100),
   })),
 
@@ -967,7 +1074,7 @@ const adminRouter = router({
   orders: adminProcedure.query(() =>
     db.select({
       id: orders.id, status: orders.status, title: orders.title, quantity: orders.quantity, unitPriceCents: orders.unitPriceCents,
-      createdAt: orders.createdAt, deliveredAt: orders.deliveredAt, listingId: orders.listingId,
+      createdAt: orders.createdAt, deliveredAt: orders.deliveredAt, listingId: orders.listingId, payLabel: orders.payLabel, payStatus: orders.payStatus,
       shopName: shops.name, shopHandle: shops.handle, buyerName: users.name, buyerEmail: users.email,
       contribution: sql<string | null>`(select c.status from contributions c where c.order_id = orders.id limit 1)`,
     }).from(orders).innerJoin(shops, eq(shops.id, orders.shopId)).innerJoin(users, eq(users.id, orders.buyerId))

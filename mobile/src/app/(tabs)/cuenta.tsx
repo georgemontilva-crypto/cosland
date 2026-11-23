@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronRight, Eye, FileText, Heart, LogOut, Megaphone, Pencil, Plus, Share2, Shield, ShieldCheck, ShoppingBag, Store, Trash2, UserX, Volume2, VolumeX } from "lucide-react-native";
+import { ChevronRight, Eye, FileText, Heart, LogOut, Megaphone, Pencil, Plus, Share2, Shield, ShieldCheck, ShoppingBag, Store, Trash2, UserX, Volume2, VolumeX, Wallet } from "lucide-react-native";
 import { formatPrice, hasStock } from "@shared/catalog";
 import { getFlag, setFlag, trpc } from "@/lib/api";
 import { openWebPage, shareLink } from "@/lib/actions";
@@ -33,6 +33,7 @@ export default function Account() {
   const toast = useToast();
   const utils = trpc.useUtils();
   const mine = trpc.listing.mine.useQuery(undefined, { enabled: Boolean(me?.shop) });
+  const pays = trpc.shop.payments.useQuery(undefined, { enabled: Boolean(me?.shop) });
   const [removing, setRemoving] = useState<null | { id: number; title: string }>(null);
   const [followers, setFollowers] = useState(false);
   const sellOne = trpc.listing.sellOne.useMutation({
@@ -139,6 +140,7 @@ export default function Account() {
 
         <View style={[soft, { overflow: "hidden", marginTop: 6 }]}>
           {me && <Row icon={<ShoppingBag size={19} color={C.ink} />} label={me.orders ? `Pedidos (${me.orders} por atender)` : "Pedidos"} onPress={() => router.push("/pedidos")} />}
+          {shop && <Row icon={<Wallet size={19} color={C.ink} />} label={pays.data && !pays.data.methods.length ? "Agrega cómo te pagan" : "Cómo te pagan"} onPress={() => router.push("/cobros")} />}
           {me && <Row icon={<Heart size={19} color={C.ink} />} label="Favoritos" onPress={() => router.push("/favoritos")} />}
           <Row icon={<Megaphone size={19} color={C.ink} />} label="Se busca" onPress={() => router.push("/se-busca")} />
           <Row icon={<Store size={19} color={C.ink} />} label="Vitrinas" onPress={() => router.push("/vitrinas")} />

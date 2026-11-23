@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Eye, Pencil, Plus, Share2, ShoppingBag } from "lucide-react";
+import { Eye, Pencil, Plus, Share2, ShoppingBag, Wallet } from "lucide-react";
 import { formatPrice, hasStock } from "@shared/catalog";
 import { trpc } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
@@ -36,8 +36,9 @@ export default function Dashboard() {
     },
   });
   const orders = trpc.order.mine.useQuery(undefined, { enabled: Boolean(me?.shop) });
-  const toAnswer = orders.data?.selling.filter((o) => o.status === "pending").length ?? 0;
-  const toDeliver = orders.data?.selling.filter((o) => o.status === "accepted").length ?? 0;
+  const toAnswer = orders.data?.selling.filter((o) => o.status === "pending" || (o.status === "accepted" && o.payStatus === "reported")).length ?? 0;
+  const toDeliver = orders.data?.selling.filter((o) => o.status === "accepted" && (o.payStatus === "confirmed" || o.payStatus === "on_delivery")).length ?? 0;
+  const pays = trpc.shop.payments.useQuery(undefined, { enabled: Boolean(me?.shop) });
 
   const [followers, setFollowers] = useState(false);
   if (loading) return <Loading />;
@@ -102,10 +103,21 @@ export default function Dashboard() {
       <Link href="/pedidos" className={`mt-6 flex items-center gap-3 rounded-[1.75rem] border-[1.5px] border-ink p-4 ${toAnswer ? "bg-yuzu" : "bg-paper"}`}>
         <ShoppingBag size={22} className="shrink-0" />
         <span className="flex-1">
-          <b className="block">{toAnswer ? `${toAnswer} ${toAnswer === 1 ? "pedido por aceptar" : "pedidos por aceptar"}` : "Pedidos y ventas"}</b>
-          <span className="text-sm text-cocoa">{toDeliver ? `${toDeliver} por entregar. ` : ""}Aquí aceptas pedidos y marcas las entregas.</span>
+          <b className="block">{toAnswer ? `${toAnswer} ${toAnswer === 1 ? "pago por confirmar" : "pagos por confirmar"}` : toDeliver ? `${toDeliver} por entregar` : "Pedidos y ventas"}</b>
+          <span className="text-sm text-cocoa">{toAnswer && toDeliver ? `${toDeliver} por entregar. ` : ""}Aquí confirmas los pagos y marcas las entregas.</span>
         </span>
         <span className="font-bold underline underline-offset-4 shrink-0">Ver</span>
+      </Link>
+
+      <Link href="/mi-vitrina/cobros" className={`mt-3 flex items-center gap-3 rounded-[1.75rem] border-[1.5px] border-ink p-4 ${pays.data && !pays.data.methods.length ? "bg-sakura" : "bg-paper"}`}>
+        <Wallet size={22} className="shrink-0" />
+        <span className="flex-1">
+          <b className="block">{pays.data && !pays.data.methods.length ? "Agrega cómo te pagan" : "Cómo te pagan"}</b>
+          <span className="text-sm text-cocoa">{pays.data?.methods.length
+            ? `${pays.data.methods.length} ${pays.data.methods.length === 1 ? "forma de pago" : "formas de pago"}${pays.data.payOnDelivery ? " y pago al recibir" : ""}.`
+            : pays.data?.payOnDelivery ? "Por ahora solo pago al recibir. Suma Pago Móvil, Zelle u otra para que te paguen de una vez." : "Sin formas de pago no te pueden comprar."}</span>
+        </span>
+        <span className="font-bold underline underline-offset-4 shrink-0">{pays.data?.methods.length ? "Editar" : "Agregar"}</span>
       </Link>
 
       <h2 className="text-2xl mt-10 mb-4">Mis publicaciones</h2>

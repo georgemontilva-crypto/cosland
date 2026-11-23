@@ -16,6 +16,7 @@ import Favorites from "./pages/Favorites";
 import Messages from "./pages/Messages";
 import Admin from "./pages/Admin";
 import Orders from "./pages/Orders";
+import Payments from "./pages/Payments";
 import Safety from "./pages/Safety";
 import { DeleteAccount, Privacy, Terms } from "./pages/Legal";
 import { Empty } from "./components/ui";
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="/mensajes">{() => <Messages />}</Route>
         <Route path="/mensajes/:id">{(p) => <Messages id={Number(p.id)} />}</Route>
         <Route path="/pedidos" component={Orders} />
+        <Route path="/mi-vitrina/cobros" component={Payments} />
         <Route path="/admin" component={Admin} />
         <Route path="/compra-segura" component={Safety} />
         <Route path="/privacidad" component={Privacy} />

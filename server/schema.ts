@@ -2,7 +2,7 @@ import {
   mysqlTable, int, varchar, text, boolean, timestamp, mysqlEnum, uniqueIndex, index, customType, primaryKey,
 } from "drizzle-orm/mysql-core";
 import {
-  ACCENT_IDS, CONDITION_IDS, DEAL_IDS, DELIVERY_IDS, ORDER_STATUS_IDS, SHOP_KIND_IDS,
+  ACCENT_IDS, CONDITION_IDS, DEAL_IDS, DELIVERY_IDS, ORDER_STATUS_IDS, PAY_STATUS_IDS, SHOP_KIND_IDS,
 } from "../shared/catalog";
 
 // Lista de URLs guardada como texto JSON (funciona igual en MySQL y MariaDB)
@@ -46,6 +46,8 @@ export const shops = mysqlTable("shops", {
   verified: boolean("verified").notNull().default(false),
   // Insignia "Apoya a Cosland" otorgada a mano desde administración (además de la que se gana con aportes confirmados)
   supportBadge: boolean("support_badge").notNull().default(false),
+  // Acepta que le paguen al momento de la entrega
+  payOnDelivery: boolean("pay_on_delivery").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("shops_handle_idx").on(t.handle), uniqueIndex("shops_user_idx").on(t.userId)]);
 
@@ -163,6 +165,15 @@ export const contributions = mysqlTable("contributions", {
   confirmedAt: timestamp("confirmed_at"),
 }, (t) => [index("contrib_shop_idx").on(t.shopId, t.status), index("contrib_status_idx").on(t.status, t.confirmedAt)]);
 
+// Métodos de pago de cada vitrina (Pago Móvil, Zelle…). Los datos solo los ve quien le compra.
+export const shopPayments = mysqlTable("shop_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  shopId: int("shop_id").notNull(),
+  type: varchar("type", { length: 30 }).notNull(),
+  details: varchar("details", { length: 600 }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [index("shop_payments_shop_idx").on(t.shopId)]);
+
 // Pedidos: el registro de cada venta acordada dentro de Cosland (el pago va por fuera, entre las dos personas)
 export const orders = mysqlTable("orders", {
   id: int("id").autoincrement().primaryKey(),
@@ -176,6 +187,13 @@ export const orders = mysqlTable("orders", {
   quantity: int("quantity").notNull().default(1),
   note: varchar("note", { length: 500 }),
   status: mysqlEnum("status", ORDER_STATUS_IDS).notNull().default("pending"),
+  // Pago: va directo al vendedor. Aquí solo queda cómo se pagó y si ya se confirmó.
+  payMethodId: int("pay_method_id"),
+  payLabel: varchar("pay_label", { length: 60 }),
+  payStatus: mysqlEnum("pay_status", PAY_STATUS_IDS).notNull().default("on_delivery"),
+  payReference: varchar("pay_reference", { length: 120 }),
+  payProofUrl: varchar("pay_proof_url", { length: 500 }),
+  paidAt: timestamp("paid_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
   deliveredAt: timestamp("delivered_at"),

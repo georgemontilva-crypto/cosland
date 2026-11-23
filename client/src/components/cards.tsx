@@ -64,7 +64,7 @@ export function ListingGrid({ items }: { items: Card[] }) {
 }
 
 /* Tarjeta de vitrina: una fachada con su toldo */
-export function ShopCard({ shop }: { shop: Pick<ShopCardData, "handle" | "name" | "kind" | "avatarUrl" | "accent" | "city" | "verified" | "hasStore" | "listingCount" | "rating" | "reviewCount"> & { supporter?: number } }) {
+export function ShopCard({ shop }: { shop: Pick<ShopCardData, "handle" | "name" | "kind" | "avatarUrl" | "accent" | "city" | "verified" | "hasStore" | "listingCount" | "rating" | "reviewCount"> & { supporter?: number; sales?: number } }) {
   return (
     <Link href={`/v/${shop.handle}`} className="block h-full panel overflow-hidden transition-transform hover:-translate-y-1">
       <Awning accent={shop.accent} size={30} />
@@ -83,6 +83,7 @@ export function ShopCard({ shop }: { shop: Pick<ShopCardData, "handle" | "name" 
           </p>
           <p className="text-sm mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
             {shop.reviewCount > 0 && <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><Stars value={shop.rating} size={13} /><span className="text-cocoa">({shop.reviewCount})</span></span>}
+            {(shop.sales ?? 0) > 0 && <span className="font-bold whitespace-nowrap">{shop.sales} {shop.sales === 1 ? "venta" : "ventas"}</span>}
             <span className="text-cocoa whitespace-nowrap">{shop.listingCount} {shop.listingCount === 1 ? "publicación" : "publicaciones"}</span>
           </p>
         </div>

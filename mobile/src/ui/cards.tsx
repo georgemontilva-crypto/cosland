@@ -57,7 +57,7 @@ export function Grid({ items }: { items: Card[] }) {
 }
 
 /* Tarjeta de vitrina: una fachada con su toldo */
-export function ShopCard({ shop }: { shop: Pick<ShopSummary, "handle" | "name" | "kind" | "avatarUrl" | "accent" | "city" | "verified" | "hasStore" | "listingCount" | "rating" | "reviewCount"> }) {
+export function ShopCard({ shop }: { shop: Pick<ShopSummary, "handle" | "name" | "kind" | "avatarUrl" | "accent" | "city" | "verified" | "hasStore" | "listingCount" | "rating" | "reviewCount"> & { sales?: number } }) {
   return (
     <Pressable accessibilityRole="link" accessibilityLabel={`Vitrina ${shop.name}`} onPress={() => router.push(`/v/${shop.handle}`)} style={({ pressed }) => [panel, pressed && { opacity: 0.85 }]}>
       <Awning accent={shop.accent} size={28} />
@@ -75,6 +75,7 @@ export function ShopCard({ shop }: { shop: Pick<ShopSummary, "handle" | "name" |
           </View>
           <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 8, rowGap: 2, marginTop: 3 }}>
             {shop.reviewCount > 0 && <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}><Stars value={shop.rating} size={13} /><T size={13} color={C.cocoa}>({shop.reviewCount})</T></View>}
+            {(shop.sales ?? 0) > 0 ? <T size={13} w="bold">{shop.sales} {shop.sales === 1 ? "venta" : "ventas"}</T> : null}
             <T size={13} color={C.cocoa}>{shop.listingCount} {shop.listingCount === 1 ? "publicación" : "publicaciones"}</T>
           </View>
         </View>

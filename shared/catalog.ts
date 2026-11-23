@@ -59,6 +59,32 @@ export type OrderStatus = (typeof ORDER_STATUS)[number]["id"];
 export const ORDER_STATUS_IDS = ORDER_STATUS.map((s) => s.id) as [OrderStatus, ...OrderStatus[]];
 export const orderStatusLabel = (id?: string | null) => ORDER_STATUS.find((s) => s.id === id)?.label ?? "";
 
+// Cómo cobra cada vitrina. El vendedor escribe sus datos; el comprador los ve al comprar.
+export const PAY_TYPES = [
+  { id: "pago-movil", label: "Pago Móvil", hint: "Banco, teléfono y cédula" },
+  { id: "transferencia", label: "Transferencia bancaria", hint: "Banco, tipo y número de cuenta, titular y documento" },
+  { id: "zelle", label: "Zelle", hint: "Correo o teléfono y nombre del titular" },
+  { id: "binance", label: "Binance o USDT", hint: "Correo de Binance Pay o dirección y red" },
+  { id: "paypal", label: "PayPal", hint: "Correo de PayPal" },
+  { id: "nequi", label: "Nequi", hint: "Número de teléfono y nombre" },
+  { id: "daviplata", label: "Daviplata", hint: "Número de teléfono y nombre" },
+  { id: "otro", label: "Otro", hint: "Cómo y a dónde pagar" },
+] as const;
+export type PayType = (typeof PAY_TYPES)[number]["id"];
+export const PAY_TYPE_IDS = PAY_TYPES.map((p) => p.id) as [PayType, ...PayType[]];
+export const payTypeLabel = (id?: string | null) => PAY_TYPES.find((p) => p.id === id)?.label ?? "";
+export const PAY_ON_DELIVERY = "Pago al recibir";
+
+export const PAY_STATUS_IDS = ["unpaid", "reported", "confirmed", "on_delivery"] as const;
+export type PayStatus = (typeof PAY_STATUS_IDS)[number];
+
+// Reputación: sale de las ventas concretadas y del puntaje de las reseñas
+export function sellerLevel(sales: number, rating: number, reviewCount: number): { label: string; tone: string } | null {
+  if (sales >= 20 && reviewCount >= 5 && rating >= 4.5) return { label: "Vendedor destacado", tone: "#f8e29c" };
+  if (sales >= 5 && (reviewCount === 0 || rating >= 4)) return { label: "Vendedor confiable", tone: "#cde4be" };
+  return null;
+}
+
 export const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "A medida", "Talla única"] as const;
 
 export const DELIVERY = [

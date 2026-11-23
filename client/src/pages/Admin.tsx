@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { formatPrice, orderStatusLabel, shopKindLabel } from "@shared/catalog";
+import { formatPrice, shopKindLabel } from "@shared/catalog";
+import { orderState } from "./Orders";
 import { trpc, timeAgo } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
 import { Empty, Loading, useToast } from "@/components/ui";
-
-const SALE_TONE: Record<string, string> = { pending: "#f8e29c", accepted: "#bcdfee", delivered: "#d8cbf0", completed: "#cde4be", rejected: "#f3e6cb", cancelled: "#f3e6cb" };
 
 type Tab = "resumen" | "publicaciones" | "vitrinas" | "usuarios" | "ventas" | "denuncias" | "aportes";
 
@@ -103,7 +102,7 @@ export default function Admin() {
         </ul>
       ))}
 
-      {tab === "ventas" && (sales.isLoading ? <Loading /> : !sales.data?.length ? <Empty title="Aún no hay pedidos">Aparecen aquí cuando alguien toca "Lo quiero" en una publicación.</Empty> : (
+      {tab === "ventas" && (sales.isLoading ? <Loading /> : !sales.data?.length ? <Empty title="Aún no hay pedidos">Aparecen aquí cuando alguien compra una publicación.</Empty> : (
         <ul className="grid gap-2.5">
           {sales.data.map((v) => (
             <li key={v.id} className="soft p-3.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
@@ -114,7 +113,8 @@ export default function Admin() {
                 </p>
               </div>
               <span className="font-bold">{v.unitPriceCents != null ? formatPrice(v.unitPriceCents * v.quantity, "venta") : "A convenir"}</span>
-              <span className="tag !border-ink/40" style={{ background: SALE_TONE[v.status] }}>{orderStatusLabel(v.status)}</span>
+              {v.payLabel && <span className="text-sm text-cocoa">{v.payLabel}</span>}
+              <span className="tag !border-ink/40" style={{ background: orderState(v).tone }}>{orderState(v).label}</span>
               {v.contribution && <span className="tag !border-ink/40" style={{ background: v.contribution === "confirmed" ? "#cde4be" : "#f8e29c" }}>Aporte {({ pending: "pendiente", reported: "por verificar", confirmed: "recibido", dismissed: "omitido" } as Record<string, string>)[v.contribution]}</span>}
             </li>
           ))}
