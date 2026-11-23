@@ -34,7 +34,12 @@
 
 @layer base {
   html { background: var(--color-cream); color: var(--color-ink); -webkit-text-size-adjust: 100%; }
-  body { font-family: var(--font-sans); font-weight: 500; line-height: 1.55; min-height: 100dvh; }
+  /* Red de seguridad en teléfono: si algo llegara a pasarse del ancho, se recorta en vez de ensanchar y achicar toda la página */
+  html, body { overflow-x: clip; }
+  /* Teléfono primero: una palabra o un enlace larguísimo se parte en vez de ensanchar la página */
+  body { font-family: var(--font-sans); font-weight: 500; line-height: 1.55; min-height: 100dvh; overflow-wrap: anywhere; }
+  /* Los hijos de una cuadrícula pueden encogerse: un texto en una sola línea ya no ensancha la columna */
+  :where(.grid) > * { min-width: 0; }
   h1, h2, h3 { font-weight: 800; line-height: 1.12; letter-spacing: -0.015em; text-wrap: balance; }
   p { text-wrap: pretty; }
   ::selection { background: var(--color-yuzu); }
@@ -56,6 +61,8 @@
     font-weight: 700; font-size: 0.975rem; line-height: 1.2; text-align: center;
     transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
   }
+  /* Botones, chips y etiquetas no se parten letra por letra */
+  .btn, .chip, .tag, nav a { overflow-wrap: normal; }
   .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 3px 0 var(--color-ink); }
   .btn:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
   .btn:disabled { opacity: 0.5; }
@@ -72,7 +79,7 @@
 
   /* Encabezado de vitrina */
   .shop-head {
-    display: grid; grid-template-columns: auto 1fr; column-gap: 0.75rem; align-items: end;
+    display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 0.75rem; align-items: end;
     grid-template-areas: "avatar icons" "info info" "main main";
   }
   .sh-avatar {
@@ -86,6 +93,13 @@
   .sh-icons { grid-area: icons; justify-self: end; display: flex; gap: 0.4rem; margin-right: 0.35rem; }
   .sh-main { grid-area: main; margin-top: 0.9rem; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0.5rem; max-width: 26rem; }
   .sh-main .btn { white-space: nowrap; padding-inline: 0.9rem; }
+  /* Teléfonos estrechos: la foto y los botones redondos se achican para caber en una fila */
+  @media (max-width: 22.4rem) {
+    .sh-avatar { width: 4.5rem; height: 4.5rem; margin-left: 0.25rem; }
+    .shop-head.has-banner .sh-avatar { margin-top: -1.75rem; }
+    .sh-icons { gap: 0.3rem; margin-right: 0; }
+    .sh-icons .btn-icon { width: 2.5rem; min-height: 2.5rem; }
+  }
   @media (min-width: 72rem) {
     .shop-head { grid-template-columns: auto 1fr auto; grid-template-areas: "avatar info actions"; column-gap: 1.5rem; align-items: start; padding-inline: 2rem; }
     .sh-avatar { width: 8rem; height: 8rem; box-shadow: 0 0 0 6px var(--color-cream); margin-left: 0; }

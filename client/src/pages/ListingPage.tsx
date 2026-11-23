@@ -58,7 +58,8 @@ export default function ListingPage({ id }: { id: number }) {
       </nav>
 
       <div className="grid lg:grid-cols-[1.15fr_1fr] gap-7 lg:gap-12 items-start">
-        <div>
+        {/* min-w-0: sin esto, una fila larga de miniaturas ensancha toda la página en teléfono */}
+        <div className="min-w-0">
           <div className="relative aspect-square rounded-[2rem] overflow-hidden border-[1.5px] border-ink bg-oat">
             <Photo src={l.images[photo]} alt={l.title} accent={s.accent} />
             {l.status !== "active" && (
@@ -79,7 +80,7 @@ export default function ListingPage({ id }: { id: number }) {
           )}
         </div>
 
-        <div>
+        <div className="min-w-0">
           <div className="flex flex-wrap gap-1.5 mb-3">
             {l.kind === "service" ? <span className="tag" style={{ background: "#d8cbf0" }}>Servicio</span> : l.condition && <span className="tag">{conditionLabel(l.condition)}</span>}
             {l.deal !== "venta" && <span className="tag" style={{ background: "#bcdfee" }}>{dealLabel(l.deal)}</span>}

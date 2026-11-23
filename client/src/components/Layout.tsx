@@ -80,9 +80,9 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-dvh flex flex-col">
       <a href="#contenido" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[70] btn btn-ink">Saltar al contenido</a>
       <header className="sticky top-0 z-30 bg-cream/90 backdrop-blur-md border-b-[1.5px] border-ink/10">
-        <div className="wrap flex items-center gap-3 md:gap-5 h-16 md:h-[4.5rem]">
+        <div className="wrap flex items-center gap-2 min-[360px]:gap-3 md:gap-5 h-16 md:h-[4.5rem]">
           <Link href="/" aria-label="Cosland, inicio" className="shrink-0 rounded-xl">
-            <img src="/logo-ink.png" alt="Cosland" className="h-9 md:h-11 w-auto" width={1280} height={344} />
+            <img src="/logo-ink.png" alt="Cosland" className="h-7 min-[360px]:h-9 md:h-11 w-auto" width={1280} height={344} />
           </Link>
           <nav className="hidden lg:flex items-center gap-1" aria-label="Principal">
             {navLink("/explorar", "Explorar")}
@@ -90,7 +90,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             {navLink("/se-busca", "Se busca")}
           </nav>
           <SearchBox className="hidden md:block flex-1 max-w-md ml-auto" />
-          <div className="flex items-center gap-1.5 ml-auto md:ml-0">
+          <div className="flex items-center gap-0.5 min-[360px]:gap-1.5 ml-auto md:ml-0 shrink-0">
             <Link href="/explorar" className="md:hidden btn btn-ghost btn-sm !px-2.5" aria-label="Buscar"><Search size={21} /></Link>
             <Link href="/favoritos" className="btn btn-ghost btn-sm !px-2.5" aria-label="Favoritos"><Heart size={21} /></Link>
             <Link href="/mensajes" className="hidden md:inline-flex btn btn-ghost btn-sm !px-2.5 relative" aria-label={`Mensajes${me?.unread ? `, ${me.unread} sin leer` : ""}`}>

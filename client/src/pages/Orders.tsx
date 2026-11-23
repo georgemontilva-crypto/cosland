@@ -38,7 +38,7 @@ function OrderRow({ o, role, busy, act }: { o: Order; role: "buyer" | "seller"; 
           <span className="tag !border-ink/40" style={{ background: TONE[o.status] }}>{orderStatusLabel(o.status)}</span>
           <span className="text-sm text-cocoa">Pedido {timeAgo(o.createdAt)}</span>
         </div>
-        <Link href={`/p/${o.listingId}`} className="font-extrabold leading-snug line-clamp-2 mt-1 block">{o.title}{o.quantity > 1 ? ` (${o.quantity} unidades)` : ""}</Link>
+        <Link href={`/p/${o.listingId}`} className="font-extrabold leading-snug line-clamp-2 mt-1">{o.title}{o.quantity > 1 ? ` (${o.quantity} unidades)` : ""}</Link>
         <p className="text-sm mt-0.5">
           <span className="font-bold">{total}</span>
           <span className="text-cocoa"> {role === "buyer" ? <>a <Link href={`/v/${o.shopHandle}`} className="underline underline-offset-2">{o.shopName}</Link></> : `para ${o.buyerName}`}</span>
