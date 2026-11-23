@@ -50,6 +50,13 @@
       "when": 1795449781781,
       "tag": "0006_daily_human_robot",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1795457614542,
+      "tag": "0007_servicios_activos",
+      "breakpoints": true
     }
   ]
 }

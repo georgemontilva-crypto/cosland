@@ -12,7 +12,7 @@ import { Awning, Avatar, Btn, Empty, Field, H2, IconBtn, Input, Loading, Photo, 
 import { Grid, PAD } from "@/ui/cards";
 import ContactSheet from "@/ui/ContactSheet";
 import CheckoutSheet, { Reputation, canBuy, payList } from "@/ui/Checkout";
-import { SupportSheet, type Owed } from "@/ui/Support";
+import { SupportSheet, useSupport, type Owed } from "@/ui/Support";
 
 export default function ListingScreen() {
   const id = Number(useLocalSearchParams<{ id: string }>().id);
@@ -31,8 +31,9 @@ export default function ListingScreen() {
   const [reason, setReason] = useState<string>(REPORT_REASONS[0]);
   const [detail, setDetail] = useState("");
   const [owed, setOwed] = useState<Owed | null>(null);
+  const support = useSupport();
   const setStatus = trpc.listing.setStatus.useMutation({
-    onSuccess: (r) => { utils.listing.invalidate(); utils.support.invalidate(); toast("Publicación actualizada"); if (r.contributionId) setOwed({ id: r.contributionId, title: q.data?.title }); },
+    onSuccess: (r) => { utils.listing.invalidate(); utils.support.invalidate(); toast(r.kept ? "Venta anotada. Tu publicación sigue activa." : "Publicación actualizada"); if (r.contributionId) setOwed({ id: r.contributionId, title: q.data?.title }); },
   });
   const report = trpc.report.create.useMutation({ onSuccess: () => { setReporting(false); setDetail(""); toast("Denuncia enviada. La revisaremos."); }, onError: (e) => toast(errText(e), true) });
 
@@ -91,9 +92,12 @@ export default function ListingScreen() {
           {l.isMine && (
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
               <Btn label="Editar" kind="ink" icon={<Pencil size={16} color={C.cream} />} onPress={() => router.push(`/editar/${l.id}`)} />
-              {l.status === "active"
-                ? <Btn label="Marcar como vendido" kind="matcha" onPress={() => setStatus.mutate({ id: l.id, status: "sold" })} />
-                : <Btn label="Volver a publicar" onPress={() => setStatus.mutate({ id: l.id, status: "active" })} />}
+              {l.status !== "active"
+                ? <Btn label="Volver a publicar" onPress={() => setStatus.mutate({ id: l.id, status: "active" })} />
+                : hasStock(l.kind, l.deal)
+                  ? <Btn label="Marcar como vendido" kind="matcha" onPress={() => setStatus.mutate({ id: l.id, status: "sold" })} />
+                  // Servicios, encargos y alquileres no se agotan: solo se anota la venta cuando llevan el dólar para Cosland
+                  : l.supportsApp && support?.enabled ? <Btn label="Anotar una venta" kind="matcha" onPress={() => setStatus.mutate({ id: l.id, status: "sold" })} /> : null}
             </View>
           )}
 

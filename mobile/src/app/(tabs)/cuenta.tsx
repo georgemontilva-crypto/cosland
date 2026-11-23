@@ -39,7 +39,7 @@ export default function Account() {
   const [followers, setFollowers] = useState(false);
   const sellOne = trpc.listing.sellOne.useMutation({
     onSuccess: (r, v) => {
-      utils.listing.invalidate(); utils.shop.invalidate(); utils.support.invalidate(); toast(r.sold ? "Marcada como vendida" : `Anotado. Te quedan ${r.stock}.`);
+      utils.listing.invalidate(); utils.shop.invalidate(); utils.support.invalidate(); toast(r.stays ? "Venta anotada. Tu publicación sigue activa." : r.sold ? "Marcada como vendida" : `Anotado. Te quedan ${r.stock}.`);
       if (r.contributionId) setOwed({ id: r.contributionId, title: mine.data?.find((l) => l.id === v.id)?.title });
     },
   });
@@ -151,7 +151,10 @@ export default function Account() {
                       </View>
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
                         <Btn small label="Editar" onPress={() => router.push(`/editar/${l.id}`)} />
-                        {l.status === "active" && <Btn small kind="matcha" label={hasStock(l.kind, l.deal) && l.stock > 1 ? "Vendí una" : "Vendido"} disabled={sellOne.isPending} onPress={() => sellOne.mutate({ id: l.id })} />}
+                        {l.status === "active" && (hasStock(l.kind, l.deal)
+                          ? <Btn small kind="matcha" label={l.stock > 1 ? "Vendí una" : "Vendido"} disabled={sellOne.isPending} onPress={() => sellOne.mutate({ id: l.id })} />
+                          // Servicios, encargos y alquileres no se agotan: solo se anota la venta cuando llevan el dólar para Cosland
+                          : l.supportsApp && support?.enabled ? <Btn small kind="matcha" label="Anotar venta" disabled={sellOne.isPending} onPress={() => sellOne.mutate({ id: l.id })} /> : null)}
                         {l.status === "active" && <Btn small label="Pausar" onPress={() => setStatus.mutate({ id: l.id, status: "paused" })} />}
                         {l.status !== "active" && <Btn small label="Volver a publicar" onPress={() => setStatus.mutate({ id: l.id, status: "active" })} />}
                         <Btn small kind="ghost" label="Eliminar" icon={<Trash2 size={15} color={C.berry} />} onPress={() => setRemoving({ id: l.id, title: l.title })} />

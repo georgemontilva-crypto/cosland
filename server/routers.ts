@@ -495,7 +495,9 @@ const listingRouter = router({
         .where(and(eq(listings.id, input.id), eq(listings.shopId, shop.id))).limit(1);
       if (!l) throw fail("NOT_FOUND", "No encontramos esa publicación en tu vitrina.");
       const stocked = hasStock(l.kind, l.deal);
-      await db.update(listings).set({
+      // Un servicio, un encargo o un alquiler no se agota: "vendido" ahí solo anota la venta y la publicación sigue activa
+      const keepsOpen = input.status === "sold" && !stocked;
+      if (!keepsOpen) await db.update(listings).set({
         status: input.status,
         // Vendida del todo: sin unidades. Al volver a publicarla, al menos una.
         ...(stocked && input.status === "sold" ? { stock: 0 } : {}),
@@ -516,7 +518,7 @@ const listingRouter = router({
         await db.delete(contributions).where(eq(contributions.id, open.id)); // se arrepintió de marcarla vendida
       }
       touch(T.listing(l.id), T.shop(shop.id), T.feed);
-      return { ok: true, contributionId };
+      return { ok: true, contributionId, kept: keepsOpen };
     }),
 
   // "Vendí una": una venta hecha por fuera de un pedido. Baja una unidad y, si era la última, queda vendida.
@@ -526,16 +528,19 @@ const listingRouter = router({
     const [l] = await db.select({ id: listings.id, supportsApp: listings.supportsApp, kind: listings.kind, deal: listings.deal, stock: listings.stock, status: listings.status })
       .from(listings).where(and(eq(listings.id, input.id), eq(listings.shopId, shop.id))).limit(1);
     if (!l || l.status === "removed") throw fail("NOT_FOUND", "No encontramos esa publicación en tu vitrina.");
-    const left = hasStock(l.kind, l.deal) ? Math.max(0, l.stock - 1) : 0;
-    const sold = left === 0;
-    await db.update(listings).set({ ...(hasStock(l.kind, l.deal) ? { stock: left } : {}), ...(sold ? { status: "sold" as const } : {}) }).where(eq(listings.id, l.id));
+    // Solo se agota lo que tiene unidades (un artículo en venta). Un servicio, un encargo o un alquiler
+    // se pueden vender muchas veces: la venta se anota y la publicación sigue activa.
+    const stocked = hasStock(l.kind, l.deal);
+    const left = stocked ? Math.max(0, l.stock - 1) : l.stock;
+    const sold = stocked && left === 0;
+    if (stocked) await db.update(listings).set({ stock: left, ...(sold ? { status: "sold" as const } : {}) }).where(eq(listings.id, l.id));
     let contributionId: number | null = null;
     if (l.supportsApp && (await getSettings()).enabled) {
       const [r] = await db.insert(contributions).values({ shopId: shop.id, listingId: l.id, amountCents: SUPPORT_CENTS });
       contributionId = r.insertId;
     }
     touch(T.listing(l.id), T.shop(shop.id), T.feed);
-    return { ok: true, contributionId, stock: left, sold };
+    return { ok: true, contributionId, stock: left, sold, stays: !stocked };
   }),
 
   toggleFavorite: authedProcedure.input(z.object({ listingId: z.number().int() })).mutation(async ({ ctx, input }) => {

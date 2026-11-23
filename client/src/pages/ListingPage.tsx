@@ -7,7 +7,7 @@ import { useFavorites, useMe } from "@/lib/hooks";
 import { Awning, Avatar, Empty, Field, Loading, Modal, Stars, useToast } from "@/components/ui";
 import { ListingGrid, Photo } from "@/components/cards";
 import ContactModal from "@/components/ContactModal";
-import { SupportModal } from "@/components/Support";
+import { SupportModal, useSupport } from "@/components/Support";
 import CheckoutModal, { Reputation, canBuy } from "@/components/Checkout";
 
 export async function share(title: string, toast: (t: string) => void) {
@@ -33,8 +33,9 @@ export default function ListingPage({ id }: { id: number }) {
   const setStatus = trpc.listing.setStatus.useMutation({
     onSuccess: (r) => { utils.listing.invalidate(); utils.support.invalidate(); toast("Publicación actualizada"); if (r.contributionId) setOwed(r.contributionId); },
   });
+  const support = useSupport();
   const sellOne = trpc.listing.sellOne.useMutation({
-    onSuccess: (r) => { utils.listing.invalidate(); utils.support.invalidate(); toast(r.sold ? "Marcada como vendida" : `Anotado. Te quedan ${r.stock}.`); if (r.contributionId) setOwed(r.contributionId); },
+    onSuccess: (r) => { utils.listing.invalidate(); utils.support.invalidate(); toast(r.stays ? "Venta anotada. Tu publicación sigue activa." : r.sold ? "Marcada como vendida" : `Anotado. Te quedan ${r.stock}.`); if (r.contributionId) setOwed(r.contributionId); },
   });
   const report = trpc.report.create.useMutation({ onSuccess: () => { setModal(null); toast("Denuncia enviada. La revisaremos."); }, onError: (e) => toast(e.message, true) });
 
@@ -98,7 +99,9 @@ export default function ListingPage({ id }: { id: number }) {
           {l.isMine ? (
             <div className="mt-6 flex flex-wrap gap-2">
               <Link href={`/editar/${l.id}`} className="btn btn-ink"><Pencil size={17} />Editar</Link>
-              {l.status === "active" && <button className="btn btn-matcha" disabled={sellOne.isPending} onClick={() => sellOne.mutate({ id: l.id })}>{stocked && l.stock > 1 ? "Vendí una" : "Marcar como vendido"}</button>}
+              {l.status === "active" && (stocked
+                ? <button className="btn btn-matcha" disabled={sellOne.isPending} onClick={() => sellOne.mutate({ id: l.id })}>{l.stock > 1 ? "Vendí una" : "Marcar como vendido"}</button>
+                : l.supportsApp && support?.enabled && <button className="btn btn-matcha" disabled={sellOne.isPending} onClick={() => sellOne.mutate({ id: l.id })}>Anotar una venta</button>)}
               {l.status !== "active" && <button className="btn" onClick={() => setStatus.mutate({ id: l.id, status: "active" })}>Volver a publicar</button>}
               <button className="btn" onClick={() => share(l.title, toast)}><Share2 size={17} />Compartir</button>
             </div>
