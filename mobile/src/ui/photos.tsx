@@ -48,7 +48,7 @@ export function PhotosInput({ value, onChange, max = 8 }: { value: string[]; onC
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
           {value.map((src, i) => (
             <View key={src} style={[tile, { borderWidth: BORDER, borderColor: C.ink, backgroundColor: C.oat }]}>
-              <Image source={{ uri: img(src)! }} style={{ width: "100%", height: "100%" }} contentFit="contain" accessibilityLabel={`Foto ${i + 1}`} />
+              <Image source={{ uri: img(src)! }} style={{ width: "100%", height: "100%" }} contentFit="cover" accessibilityLabel={`Foto ${i + 1}`} />
               <Pressable accessibilityRole="button" accessibilityLabel={`Quitar foto ${i + 1}`} onPress={() => onChange(value.filter((_, j) => j !== i))} hitSlop={6}
                 style={{ position: "absolute", top: 4, right: 4, width: 30, height: 30, borderRadius: 15, backgroundColor: C.paper, borderWidth: BORDER, borderColor: C.ink, alignItems: "center", justifyContent: "center" }}>
                 <X size={15} color={C.ink} />

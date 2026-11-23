@@ -67,7 +67,7 @@ export default function ListingPage({ id }: { id: number }) {
               {l.images.map((src, i) => (
                 <button key={src} onClick={() => setPhoto(i)} aria-label={`Foto ${i + 1}`} aria-pressed={photo === i}
                   className={`w-[4.5rem] h-[4.5rem] rounded-2xl overflow-hidden bg-oat border-[1.5px] ${photo === i ? "border-ink ring-[3px] ring-yuzu" : "border-ink/30"}`}>
-                  <img src={src} alt="" className="w-full h-full object-contain" />
+                  <img src={src} alt="" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>

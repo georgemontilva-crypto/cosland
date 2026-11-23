@@ -5,10 +5,10 @@ import type { Card, ShopCardData } from "@/lib/trpc";
 import { useFavorites } from "@/lib/hooks";
 import { Awning, Avatar, Stars } from "./ui";
 
-// Las fotos de publicaciones van siempre en un marco cuadrado y se ven completas, sin recortes
+// Las fotos de publicaciones van siempre en un marco cuadrado: la imagen se acerca hasta llenarlo
 export function Photo({ src, alt, accent, className = "" }: { src?: string | null; alt: string; accent?: string | null; className?: string }) {
   return src ? (
-    <img src={src} alt={alt} loading="lazy" className={`object-contain w-full h-full ${className}`} />
+    <img src={src} alt={alt} loading="lazy" className={`object-cover w-full h-full ${className}`} />
   ) : (
     <div className={`w-full h-full grid place-items-center ${className}`} style={{ background: accentOf(accent).hex }}>
       <img src="/gato-ink.png" alt="" className="w-2/5 opacity-70" />

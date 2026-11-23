@@ -162,11 +162,11 @@ export function Avatar({ src, name, accent, size = 48 }: { src?: string | null; 
     : <View style={[base, { backgroundColor: accentHex(accent), alignItems: "center", justifyContent: "center" }]}><T w="black" size={size * 0.42} style={{ lineHeight: size * 0.56 }}>{name.trim().charAt(0).toUpperCase()}</T></View>;
 }
 
-// Las fotos de publicaciones van siempre en un marco cuadrado y se ven completas, sin recortes
+// Las fotos de publicaciones van siempre en un marco cuadrado: la imagen se acerca hasta llenarlo
 export function Photo({ src, accent, style }: { src?: string | null; accent?: string | null; style?: StyleProp<ViewStyle> }) {
   const uri = img(src);
   return uri
-    ? <Image source={{ uri }} style={[{ width: "100%", height: "100%", backgroundColor: C.oat }, style as object]} contentFit="contain" transition={150} />
+    ? <Image source={{ uri }} style={[{ width: "100%", height: "100%", backgroundColor: C.oat }, style as object]} contentFit="cover" transition={150} />
     : <View style={[{ width: "100%", height: "100%", backgroundColor: accentHex(accent), alignItems: "center", justifyContent: "center" }, style]}><Cat width={56} /></View>;
 }
 
