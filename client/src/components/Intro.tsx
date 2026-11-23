@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import P from "@/lib/logoParts.json";
+import { welcomeSound } from "@/lib/sound";
 
 // Entrada animada del logo: una vez por visita, y nunca si la persona pidió menos movimiento.
 const KEY = "cosland_intro";
@@ -20,6 +21,7 @@ function shouldPlay() {
 
 export default function Intro() {
   const [phase, setPhase] = useState<"wait" | "play" | "leave" | "done">(() => (shouldPlay() ? "wait" : "done"));
+  const [sound] = useState(() => (shouldPlay() ? welcomeSound() : null));
 
   // Espera a que las piezas estén cargadas para que nada aparezca a destiempo
   useEffect(() => {
@@ -35,6 +37,7 @@ export default function Intro() {
   useEffect(() => {
     if (phase === "play") {
       try { sessionStorage.setItem(KEY, "1"); } catch { /* no pasa nada */ }
+      sound?.play();
       const t = setTimeout(() => setPhase("leave"), PLAY_MS);
       return () => clearTimeout(t);
     }
@@ -42,6 +45,7 @@ export default function Intro() {
       const t = setTimeout(() => setPhase("done"), LEAVE_MS);
       return () => clearTimeout(t);
     }
+    if (phase === "done") sound?.stop();
   }, [phase]);
 
   if (phase === "done") return null;

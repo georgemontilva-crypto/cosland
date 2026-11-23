@@ -1,10 +1,22 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Compass, Heart, Home as HomeIcon, LogOut, MessageCircle, Plus, Search, Shield, Store, User } from "lucide-react";
+import { Compass, Heart, Home as HomeIcon, LogOut, MessageCircle, Plus, Search, Shield, Store, User, Volume2, VolumeX } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useMe, useRealtime } from "@/lib/hooks";
+import { previewSound, setSoundOn, soundOn } from "@/lib/sound";
 import InstallHint from "./InstallHint";
 import { Avatar } from "./ui";
+
+// La voz que acompaña al logo al entrar: se apaga o se enciende aquí
+function SoundToggle() {
+  const [on, setOn] = useState(soundOn);
+  const toggle = () => { const next = !on; setOn(next); setSoundOn(next); if (next) previewSound(); };
+  return (
+    <button className="inline-flex items-center gap-1.5 hover:underline" aria-pressed={on} onClick={toggle}>
+      {on ? <Volume2 size={15} /> : <VolumeX size={15} />}Sonido de bienvenida: {on ? "activado" : "apagado"}
+    </button>
+  );
+}
 
 function SearchBox({ className = "" }: { className?: string }) {
   const [, go] = useLocation();
@@ -117,6 +129,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               <Link href="/terminos" className="hover:underline">Términos de uso</Link>
               <Link href="/privacidad" className="hover:underline">Privacidad</Link>
               <Link href="/eliminar-cuenta" className="hover:underline">Eliminar mi cuenta</Link>
+              <SoundToggle />
             </nav>
             <p className="wrap pb-8 text-sm text-cream/60">Cosland conecta a compradores y vendedores. Cada venta se acuerda directamente entre las dos personas.</p>
           </div>

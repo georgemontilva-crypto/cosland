@@ -49,6 +49,8 @@ const config: ExpoConfig = {
       cameraPermission: "Cosland usa la cámara para que tomes fotos de lo que publicas.",
       microphonePermission: false,
     }],
+    // Solo se reproduce la voz de bienvenida: sin micrófono ni reproducción en segundo plano
+    ["expo-audio", { microphonePermission: false, recordAudioAndroid: false, enableBackgroundPlayback: false, enableBackgroundRecording: false }],
     "./plugins/withReleaseSigning",
   ],
 };

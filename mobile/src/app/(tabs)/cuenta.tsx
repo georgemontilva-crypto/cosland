@@ -2,15 +2,16 @@ import { useState, type ReactNode } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronRight, Eye, FileText, Heart, LogOut, Megaphone, Pencil, Plus, Share2, Shield, ShieldCheck, Store, Trash2, UserX } from "lucide-react-native";
+import { ChevronRight, Eye, FileText, Heart, LogOut, Megaphone, Pencil, Plus, Share2, Shield, ShieldCheck, Store, Trash2, UserX, Volume2, VolumeX } from "lucide-react-native";
 import { formatPrice } from "@shared/catalog";
-import { trpc } from "@/lib/api";
+import { getFlag, setFlag, trpc } from "@/lib/api";
 import { openWebPage, shareLink } from "@/lib/actions";
 import { useSession } from "@/lib/session";
 import { BORDER, C } from "@/lib/theme";
 import { Awning, Avatar, Btn, Empty, H1, H2, Loading, Photo, Sheet, T, Tag, panel, soft, useToast } from "@/ui/core";
 import { PAD } from "@/ui/cards";
 import FollowersSheet from "@/ui/FollowersSheet";
+import { SOUND_KEY, playWelcome } from "@/ui/Intro";
 
 const STATUS: Record<string, { label: string; bg: string }> = {
   active: { label: "Publicado", bg: C.matcha }, paused: { label: "En pausa", bg: C.yuzu }, sold: { label: "Vendido", bg: C.fuji },
@@ -34,6 +35,9 @@ export default function Account() {
   const mine = trpc.listing.mine.useQuery(undefined, { enabled: Boolean(me?.shop) });
   const [removing, setRemoving] = useState<null | { id: number; title: string }>(null);
   const [followers, setFollowers] = useState(false);
+  // La voz que acompaña al logo al abrir la app
+  const [sound, setSound] = useState(() => getFlag(SOUND_KEY) !== "0");
+  const toggleSound = () => { const next = !sound; setSound(next); setFlag(SOUND_KEY, next ? "1" : "0"); if (next) playWelcome(); };
   const setStatus = trpc.listing.setStatus.useMutation({ onSuccess: () => { utils.listing.invalidate(); utils.shop.invalidate(); setRemoving(null); toast("Publicación actualizada"); } });
   const items = mine.data ?? [];
   const shop = me?.shop;
@@ -134,6 +138,7 @@ export default function Account() {
           <Row icon={<Megaphone size={19} color={C.ink} />} label="Se busca" onPress={() => router.push("/se-busca")} />
           <Row icon={<Store size={19} color={C.ink} />} label="Vitrinas" onPress={() => router.push("/vitrinas")} />
           <Row icon={<ShieldCheck size={19} color={C.ink} />} label="Consejos de compra segura" onPress={() => router.push("/compra-segura")} />
+          <Row icon={sound ? <Volume2 size={19} color={C.ink} /> : <VolumeX size={19} color={C.ink} />} label={`Sonido de bienvenida: ${sound ? "activado" : "apagado"}`} onPress={toggleSound} />
           {me?.role === "admin" && <Row icon={<Shield size={19} color={C.ink} />} label="Administración (en la web)" onPress={() => openWebPage("/admin")} />}
           <Row icon={<FileText size={19} color={C.ink} />} label="Términos de uso" onPress={() => openWebPage("/terminos")} />
           <Row icon={<FileText size={19} color={C.ink} />} label="Política de privacidad" onPress={() => openWebPage("/privacidad")} />

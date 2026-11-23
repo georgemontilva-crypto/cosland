@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
+import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
+import { getFlag } from "@/lib/api";
 import { C } from "@/lib/theme";
 import P from "../../assets/logo/parts.json";
 
@@ -12,6 +14,26 @@ const IMG = {
     require("../../assets/logo/letra4.png"), require("../../assets/logo/letra5.png"), require("../../assets/logo/letra6.png")],
 };
 type Box = { x: number; y: number; w: number; h: number };
+
+// Voz de bienvenida. Respeta el modo silencio o vibración del teléfono y no corta la música que esté sonando.
+const VOICE = require("../../assets/sonido/bienvenida.mp3");
+export const SOUND_KEY = "cosland_sonido";
+export function playWelcome() {
+  let player: ReturnType<typeof createAudioPlayer> | null = null;
+  let stopped = false;
+  setAudioModeAsync({ playsInSilentMode: false, interruptionMode: "mixWithOthers", shouldPlayInBackground: false })
+    .catch(() => {})
+    .then(() => {
+      if (stopped) return;
+      try {
+        player = createAudioPlayer(VOICE);
+        player.volume = 0.9;
+        player.play();
+      } catch { /* sin audio: la entrada sigue en silencio */ }
+    });
+  const free = setTimeout(() => { try { player?.remove(); } catch { /* ya liberado */ } player = null; }, 8000);
+  return () => { stopped = true; clearTimeout(free); try { player?.remove(); } catch { /* ya liberado */ } player = null; };
+}
 
 export default function Intro() {
   const { width, height } = useWindowDimensions();
@@ -35,6 +57,7 @@ export default function Intro() {
     AccessibilityInfo.isReduceMotionEnabled().then((reduce) => {
       if (!live) return;
       if (reduce) { setDone(true); return; }
+      if (getFlag(SOUND_KEY) !== "0") playWelcome(); // la voz termina sola aunque el logo ya se haya ido
       const spring = (v: Animated.Value) => Animated.spring(v, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true });
       const blink = Animated.sequence([
         Animated.timing(eye, { toValue: 0.08, duration: 85, useNativeDriver: true }),
