@@ -69,16 +69,32 @@ export function errText(e: { message: string }) {
 }
 
 export async function uploadImage(uri: string, mime?: string | null): Promise<string> {
-  const fd = new FormData();
+  const read = (status: number, text: string) => {
+    let data: { url?: string; error?: string } = {};
+    try { data = JSON.parse(text); } catch { /* respuesta sin JSON */ }
+    if (status < 200 || status >= 300 || !data.url) throw new Error(data.error ?? "No se pudo subir la foto.");
+    return data.url;
+  };
   if (Platform.OS === "web") {
+    const fd = new FormData();
     fd.append("file", await (await fetch(uri)).blob(), "foto.jpg");
-  } else {
-    fd.append("file", { uri, name: "foto.jpg", type: mime ?? "image/jpeg" } as unknown as Blob);
+    const res = await fetch(`${API}/api/upload`, { method: "POST", body: fd, headers: authHeaders() });
+    return read(res.status, await res.text());
   }
-  const res = await fetch(`${API}/api/upload`, { method: "POST", body: fd, headers: authHeaders() });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? "No se pudo subir la foto.");
-  return data.url as string;
+  // En el teléfono la foto se envía directo desde su archivo, con la petición nativa de React Native.
+  // (El fetch de Expo no acepta archivos por su ruta: fallaba con "Unsupported FormDataPart implementation".)
+  return new Promise<string>((resolve, reject) => {
+    const fd = new FormData();
+    fd.append("file", { uri, name: "foto.jpg", type: mime || "image/jpeg" } as unknown as Blob);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API}/api/upload`);
+    for (const [k, v] of Object.entries(authHeaders())) xhr.setRequestHeader(k, v);
+    xhr.timeout = 90_000;
+    xhr.onload = () => { try { resolve(read(xhr.status, xhr.responseText)); } catch (e) { reject(e); } };
+    xhr.onerror = () => reject(new Error("No hay conexión con Cosland. Revisa tu internet."));
+    xhr.ontimeout = () => reject(new Error("La foto tardó demasiado en subir. Inténtalo de nuevo con mejor señal."));
+    xhr.send(fd);
+  });
 }
 
 export function timeAgo(d: Date | string) {
