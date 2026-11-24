@@ -11,6 +11,7 @@
   "background_color": "#fbf1dc",
   "theme_color": "#fbf1dc",
   "categories": ["shopping", "lifestyle"],
+  "related_applications": [{ "platform": "play", "id": "com.cosland.app" }],
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

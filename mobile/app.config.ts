@@ -54,6 +54,8 @@ const config: ExpoConfig = {
     // APK más liviano: solo los procesadores de teléfonos reales (sin los de emuladores) y librerías comprimidas
     ["expo-build-properties", { android: { buildArchs: ["arm64-v8a", "armeabi-v7a"], useLegacyPackaging: true } }],
     "./plugins/withReleaseSigning",
+    // Para que la web sepa que la app ya está instalada y no siga ofreciendo descargarla
+    ["./plugins/withWebLink", { site: apiUrl }],
   ],
 };
 
