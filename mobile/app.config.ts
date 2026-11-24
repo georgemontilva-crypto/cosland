@@ -51,6 +51,8 @@ const config: ExpoConfig = {
     }],
     // Solo se reproduce la voz de bienvenida: sin micrófono ni reproducción en segundo plano
     ["expo-audio", { microphonePermission: false, recordAudioAndroid: false, enableBackgroundPlayback: false, enableBackgroundRecording: false }],
+    // APK más liviano: solo los procesadores de teléfonos reales (sin los de emuladores) y librerías comprimidas
+    ["expo-build-properties", { android: { buildArchs: ["arm64-v8a", "armeabi-v7a"], useLegacyPackaging: true } }],
     "./plugins/withReleaseSigning",
   ],
 };

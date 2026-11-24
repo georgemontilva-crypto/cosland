@@ -33,7 +33,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write   # para publicar el APK en Releases (la descarga pública de la web)
 
 jobs:
   android:
@@ -139,6 +139,28 @@ jobs:
               echo "- Firma: de prueba. Este APK sirve para instalar en tu teléfono, no para Play Store."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # El APK queda siempre en la misma dirección pública; el botón "Descargar para Android" de la web apunta ahí:
+      # https://github.com/<repo>/releases/download/android/cosland.apk
+      - name: Publicar el APK para descargar
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          apk=$(ls mobile/android/app/build/outputs/apk/release/*.apk | head -1)
+          cp "$apk" "$RUNNER_TEMP/cosland.apk"
+          mb=$(( ($(stat -c %s "$RUNNER_TEMP/cosland.apk") + 524288) / 1048576 ))
+          notes="Cosland para Android, versión $APP_VERSION_NAME ($APP_VERSION_CODE). Compilada el $(date -u +%Y-%m-%d) desde ${GITHUB_SHA::7}. Pesa $mb MB."
+          gh release view android >/dev/null 2>&1 || gh release create android --title "Cosland para Android" --notes "$notes"
+          gh release upload android "$RUNNER_TEMP/cosland.apk" --clobber
+          gh release edit android --notes "$notes"
+          {
+            echo ""
+            echo "### Descarga pública"
+            echo "- APK: $mb MB"
+            echo "- https://github.com/$GITHUB_REPOSITORY/releases/download/android/cosland.apk"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "APK publicado: $mb MB"
 
       - uses: actions/upload-artifact@v4
         with:

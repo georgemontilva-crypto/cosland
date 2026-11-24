@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { Share, X } from "lucide-react";
+import { useAppDownload } from "@/pages/GetApp";
 
-// Invitación a instalar Cosland como app. En Android abre el diálogo del navegador;
-// en iPhone explica el paso manual, porque Safari no ofrece un botón.
+// Invitación a llevar Cosland en el teléfono. En Android ofrece descargar la app; si aún no hay descarga,
+// abre el diálogo del navegador para instalarla como acceso directo. En iPhone explica el paso manual.
 const KEY = "cosland_install_hint";
 type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
@@ -10,6 +12,8 @@ export default function InstallHint() {
   const [event, setEvent] = useState<InstallEvent | null>(null);
   const [ios, setIos] = useState(false);
   const [show, setShow] = useState(false);
+  const [android, setAndroid] = useState(false);
+  const app = useAppDownload();
 
   useEffect(() => {
     const standalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true;
@@ -24,11 +28,14 @@ export default function InstallHint() {
 
     const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) && !/crios|fxios|edgios/i.test(navigator.userAgent);
     const t = isIos ? setTimeout(() => { setIos(true); setShow(true); }, 8000) : undefined;
+    setAndroid(/android/i.test(navigator.userAgent) && !dismissed);
     return () => { window.removeEventListener("beforeinstallprompt", onPrompt); window.removeEventListener("appinstalled", onInstalled); clearTimeout(t); };
   }, []);
 
-  if (!show) return null;
-  const dismiss = () => { setShow(false); try { localStorage.setItem(KEY, "1"); } catch { /* no pasa nada */ } };
+  // En Android, con la app lista para bajar, se ofrece esa en vez del acceso directo
+  const native = android && Boolean(app);
+  if (!show && !native) return null;
+  const dismiss = () => { setShow(false); setAndroid(false); try { localStorage.setItem(KEY, "1"); } catch { /* no pasa nada */ } };
   const install = async () => {
     if (!event) return;
     await event.prompt();
@@ -43,9 +50,15 @@ export default function InstallHint() {
         <p className="font-extrabold text-base leading-tight">Lleva Cosland en tu teléfono</p>
         {ios
           ? <p className="text-cocoa mt-0.5">Toca <Share size={14} className="inline -mt-1" aria-label="Compartir" /> y luego “Agregar a inicio”.</p>
-          : <p className="text-cocoa mt-0.5">Se abre como una app y el chat te queda a un toque.</p>}
+          : native
+            ? <p className="text-cocoa mt-0.5">{app?.store ? "La app está en Google Play." : `Descarga la app para Android${app?.sizeMb ? `, pesa ${app.sizeMb} MB` : ""}.`}</p>
+            : <p className="text-cocoa mt-0.5">Se abre como una app y el chat te queda a un toque.</p>}
       </div>
-      {!ios && <button className="btn btn-ink btn-sm shrink-0" onClick={install}>Instalar</button>}
+      {native
+        ? app?.store
+          ? <a className="btn btn-ink btn-sm shrink-0" href="/descargar/android" target="_blank" rel="noopener noreferrer" onClick={dismiss}>Abrir</a>
+          : <Link className="btn btn-ink btn-sm shrink-0" href="/app" onClick={dismiss}>Descargar</Link>
+        : !ios && <button className="btn btn-ink btn-sm shrink-0" onClick={install}>Instalar</button>}
       <button className="btn btn-ghost btn-sm !px-2 shrink-0" onClick={dismiss} aria-label="Cerrar"><X size={18} /></button>
     </div>
   );

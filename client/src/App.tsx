@@ -18,6 +18,7 @@ import Admin from "./pages/Admin";
 import Orders from "./pages/Orders";
 import Payments from "./pages/Payments";
 import Safety from "./pages/Safety";
+import GetApp from "./pages/GetApp";
 import { DeleteAccount, Privacy, Terms } from "./pages/Legal";
 import { Empty } from "./components/ui";
 import { Link } from "wouter";
@@ -53,6 +54,7 @@ export default function App() {
         <Route path="/mi-vitrina/cobros" component={Payments} />
         <Route path="/admin" component={Admin} />
         <Route path="/compra-segura" component={Safety} />
+        <Route path="/app" component={GetApp} />
         <Route path="/privacidad" component={Privacy} />
         <Route path="/terminos" component={Terms} />
         <Route path="/eliminar-cuenta" component={DeleteAccount} />

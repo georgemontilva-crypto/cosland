@@ -5,6 +5,7 @@ import { and, or, eq, ne, like, desc, asc, sql, inArray, isNull, gte, lte, type 
 import { alias } from "drizzle-orm/mysql-core";
 import { db } from "./db";
 import { publish, touch, T } from "./realtime";
+import { appDownloadInfo } from "./appDownload";
 import { alertUser, notify, pendingCount, pushEndpointAllowed, pushPublicKey, removePushSubscription, savePushSubscription } from "./push";
 import { deleteImages } from "./storage";
 import {
@@ -1239,8 +1240,14 @@ const pushRouter = router({
   }),
 });
 
+/* ───────── App para Android ───────── */
+const appInfoRouter = router({
+  // null mientras no haya nada que descargar
+  download: publicProcedure.query(() => appDownloadInfo()),
+});
+
 export const appRouter = router({
   auth: authRouter, shop: shopRouter, listing: listingRouter, chat: chatRouter,
-  review: reviewRouter, wanted: wantedRouter, report: reportRouter, support: supportRouter, order: orderRouter, push: pushRouter, admin: adminRouter,
+  review: reviewRouter, wanted: wantedRouter, report: reportRouter, support: supportRouter, order: orderRouter, push: pushRouter, app: appInfoRouter, admin: adminRouter,
 });
 export type AppRouter = typeof appRouter;

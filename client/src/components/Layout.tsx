@@ -162,6 +162,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 <Link href="/publicar" className="hover:underline">Publicar un artículo</Link>
                 <Link href="/mi-vitrina" className="hover:underline">Abrir mi vitrina</Link>
                 <Link href="/compra-segura" className="hover:underline">Consejos de compra segura</Link>
+                <Link href="/app" className="hover:underline">Cosland en tu teléfono</Link>
               </nav>
             </div>
             <nav className="wrap pb-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-bold" aria-label="Legal">

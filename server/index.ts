@@ -12,6 +12,7 @@ import { createContext, userFromRequest } from "./trpc";
 import { db, runMigrations } from "./db";
 import { listings, messages, settings, shops, users } from "./schema";
 import { saveImage, UPLOAD_DIR, storageMode, imageOrigin, backfillThumbs } from "./storage";
+import { appDownloadTarget, watchAppDownload } from "./appDownload";
 import { subscribe, canSubscribe, liveStats, setVisible } from "./realtime";
 import { formatPrice } from "../shared/catalog";
 
@@ -36,6 +37,13 @@ if (corsOrigins.length) {
     next();
   });
 }
+
+// Botón "Descargar para Android": lleva al APK publicado o, cuando exista, a la ficha de Play Store
+app.get("/descargar/android", (_req, res) => {
+  const to = appDownloadTarget();
+  if (!to) return res.redirect(302, "/app");
+  res.set("Cache-Control", "no-store").redirect(302, to);
+});
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, live: liveStats().connections }));
 
@@ -196,6 +204,7 @@ const port = Number(process.env.PORT ?? 3000);
   if (admin) await db.update(users).set({ role: "admin" }).where(eq(users.email, admin));
   app.listen(port, "0.0.0.0", () => console.log(`Cosland en el puerto ${port} (imágenes: ${storageMode})`));
   void thumbsForOldPhotos();
+  watchAppDownload();
 })().catch((e) => {
   console.error("No se pudo arrancar:", e);
   process.exit(1);

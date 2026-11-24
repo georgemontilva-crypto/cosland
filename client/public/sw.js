@@ -23,7 +23,7 @@ self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  if (url.origin !== location.origin || url.pathname.startsWith("/api/") || url.pathname === "/sw.js") return;
+  if (url.origin !== location.origin || url.pathname.startsWith("/api/") || url.pathname.startsWith("/descargar/") || url.pathname === "/sw.js") return;
 
   // Páginas: siempre la versión nueva; sin conexión, la página de aviso
   if (req.mode === "navigate") {
