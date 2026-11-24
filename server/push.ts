@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
+import { createHash, createSign } from "node:crypto";
 import webpush from "web-push";
 import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "./db";
-import { conversations, orders, pushSubscriptions, settings, shops } from "./schema";
+import { conversations, deviceTokens, orders, pushSubscriptions, settings, shops } from "./schema";
 import { isWatching, publish } from "./realtime";
 
 // Avisos fuera de la app: notificaciones push del navegador y de la app instalada (también en iPhone,
@@ -73,15 +73,74 @@ export async function pendingCount(userId: number) {
 
 export type Alert = { title: string; body: string; url: string; tag: string };
 
+/* ── App Android: avisos por Firebase Cloud Messaging ──
+   Se activan al poner en Railway la variable FIREBASE_SERVICE_ACCOUNT con el JSON de la cuenta de servicio
+   del proyecto de Firebase. Sin ella, esta parte no hace nada. */
+type ServiceAccount = { project_id: string; client_email: string; private_key: string; token_uri?: string };
+const firebase: ServiceAccount | null = (() => {
+  try {
+    const a = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT ?? "") as ServiceAccount;
+    return a.project_id && a.client_email && a.private_key ? a : null;
+  } catch { return null; }
+})();
+export const fcmReady = Boolean(firebase);
+const FCM_HOST = process.env.FCM_HOST?.trim() || "https://fcm.googleapis.com"; // se cambia solo en pruebas
+let fcmAccess: { token: string; until: number } | null = null;
+
+async function fcmToken() {
+  if (fcmAccess && fcmAccess.until > Date.now() + 60_000) return fcmAccess.token;
+  const b64 = (x: object) => Buffer.from(JSON.stringify(x)).toString("base64url");
+  const now = Math.floor(Date.now() / 1000), aud = firebase!.token_uri || "https://oauth2.googleapis.com/token";
+  const unsigned = `${b64({ alg: "RS256", typ: "JWT" })}.${b64({ iss: firebase!.client_email, scope: "https://www.googleapis.com/auth/firebase.messaging", aud, iat: now, exp: now + 3600 })}`;
+  const jwt = `${unsigned}.${createSign("RSA-SHA256").update(unsigned).sign(firebase!.private_key).toString("base64url")}`;
+  const r = await fetch(aud, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt }), signal: AbortSignal.timeout(15_000) });
+  const d = (await r.json().catch(() => ({}))) as { access_token?: string; expires_in?: number };
+  if (!r.ok || !d.access_token) throw new Error(`Firebase no dio acceso (${r.status})`);
+  fcmAccess = { token: d.access_token, until: Date.now() + (d.expires_in ?? 3600) * 1000 };
+  return fcmAccess.token;
+}
+
+async function sendToDevices(userId: number, alert: Alert, badge: number) {
+  if (!firebase) return;
+  const devices = await db.select().from(deviceTokens).where(eq(deviceTokens.userId, userId));
+  if (!devices.length) return;
+  const access = await fcmToken();
+  await Promise.all(devices.map(async (d) => {
+    try {
+      const r = await fetch(`${FCM_HOST}/v1/projects/${firebase.project_id}/messages:send`, {
+        method: "POST", headers: { authorization: `Bearer ${access}`, "content-type": "application/json" }, signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({ message: {
+          token: d.token,
+          notification: { title: alert.title, body: alert.body.slice(0, 180) },
+          data: { url: alert.url, tag: alert.tag, badge: String(badge) },
+          android: { priority: "HIGH", ttl: "86400s", notification: { channel_id: "avisos", sound: "default", tag: alert.tag, default_vibrate_timings: true, notification_count: badge } },
+        } }),
+      });
+      // El teléfono desinstaló la app o el token caducó: se olvida
+      if (r.status === 404 || r.status === 410) await db.delete(deviceTokens).where(eq(deviceTokens.id, d.id));
+      else if (!r.ok) console.warn("[push] Firebase respondió", r.status, (await r.text().catch(() => "")).slice(0, 200));
+    } catch (e) { console.warn("[push] no se pudo enviar al teléfono:", (e as Error).message); }
+  }));
+}
+
+export async function saveDeviceToken(userId: number, token: string) {
+  // Un teléfono pertenece a la última cuenta que entró en él
+  await db.insert(deviceTokens).values({ userId, tokenHash: hash(token), token }).onDuplicateKeyUpdate({ set: { userId } });
+}
+export async function removeDeviceToken(token: string, userId?: number) {
+  await db.delete(deviceTokens).where(and(eq(deviceTokens.tokenHash, hash(token)), userId ? eq(deviceTokens.userId, userId) : undefined));
+}
+
 // Notificación al teléfono o al computador. Si la persona tiene Cosland a la vista, no se manda:
 // el aviso ya le sale dentro de la app. Nunca frena ni rompe la acción que lo provocó.
 export function notify(userId: number, alert: Alert, always = false) {
   void (async () => {
     if (!always && isWatching(userId)) return;
     const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
+    const count = await pendingCount(userId);
+    await sendToDevices(userId, alert, count.unread + count.orders).catch((e) => console.warn("[push]", (e as Error).message));
     if (!subs.length) return;
     const k = await vapid();
-    const count = await pendingCount(userId);
     const payload = JSON.stringify({ ...alert, body: alert.body.slice(0, 180), badge: count.unread + count.orders });
     await Promise.all(subs.map(async (s) => {
       try {

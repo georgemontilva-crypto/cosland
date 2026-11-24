@@ -8,3 +8,6 @@ ios
 expo-env.d.ts
 .env
 .env.local
+
+# Archivo de Firebase: se crea al compilar desde un secreto de GitHub
+google-services.json

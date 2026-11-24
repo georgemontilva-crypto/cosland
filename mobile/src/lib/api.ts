@@ -32,6 +32,10 @@ export function setFlag(key: string, value: string) {
   try { if (Platform.OS === "web") globalThis.localStorage?.setItem(key, value); else SecureStore.setItem(key, value); } catch { /* vale solo para esta sesión */ }
 }
 
+// ¿Hay una sesión guardada en este teléfono? Se lee al instante, sin esperar a que cargue la cuenta
+// (sirve para el bloqueo con huella, que debe decidir antes de mostrar nada).
+export const hasSavedSession = () => Boolean(token ?? getFlag(KEY));
+
 export async function saveToken(value: string | null) {
   token = value;
   try {

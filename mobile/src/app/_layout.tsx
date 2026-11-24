@@ -10,9 +10,12 @@ import { trpc, trpcClient } from "@/lib/api";
 import { SessionProvider } from "@/lib/session";
 import { ToastProvider } from "@/ui/core";
 import Intro from "@/ui/Intro";
+import LockGate from "@/ui/LockGate";
+import { listenAlertTaps, setupAlerts } from "@/lib/alerts";
 import { C } from "@/lib/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+setupAlerts();
 
 export default function RootLayout() {
   const [fontsReady, fontError] = useFonts({
@@ -23,6 +26,8 @@ export default function RootLayout() {
   const [qc] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 15_000 } } }));
   const ready = fontsReady || Boolean(fontError);
   useEffect(() => { if (ready) SplashScreen.hideAsync().catch(() => {}); }, [ready]);
+  // Tocar una notificación abre su pantalla (cuando la navegación ya está montada)
+  useEffect(() => (ready ? listenAlertTaps() : undefined), [ready]);
   if (!ready) return <View style={{ flex: 1, backgroundColor: C.cream }} />;
 
   return (
@@ -38,6 +43,7 @@ export default function RootLayout() {
                 <Stack.Screen name="entrar" options={{ animation: "slide_from_bottom" }} />
                 <Stack.Screen name="registro" options={{ animation: "slide_from_bottom" }} />
               </Stack>
+              <LockGate />
               <Intro />
             </SessionProvider>
           </ToastProvider>

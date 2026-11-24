@@ -1,4 +1,10 @@
+import fs from "node:fs";
+import path from "node:path";
 import type { ExpoConfig } from "expo/config";
+
+// Avisos con la app cerrada: se activan si al compilar existe mobile/google-services.json (el archivo del proyecto de Firebase).
+// Sin él la app compila igual y solo avisa mientras está abierta.
+const googleServices = fs.existsSync(path.join(__dirname, "google-services.json")) ? "./google-services.json" : undefined;
 
 // La dirección del servidor de Cosland se fija al compilar:
 //   EXPO_PUBLIC_API_URL=https://tu-dominio.com
@@ -16,6 +22,7 @@ const config: ExpoConfig = {
   backgroundColor: "#fbf1dc",
   android: {
     package: "com.cosland.app",
+    ...(googleServices ? { googleServicesFile: googleServices } : {}),
     versionCode: Number(process.env.APP_VERSION_CODE ?? 1),
     adaptiveIcon: {
       backgroundColor: "#2a211c",
@@ -53,6 +60,9 @@ const config: ExpoConfig = {
     ["expo-audio", { microphonePermission: false, recordAudioAndroid: false, enableBackgroundPlayback: false, enableBackgroundRecording: false }],
     // APK más liviano: solo los procesadores de teléfonos reales (sin los de emuladores) y librerías comprimidas
     ["expo-build-properties", { android: { buildArchs: ["arm64-v8a", "armeabi-v7a"], useLegacyPackaging: true } }],
+    // Notificaciones del teléfono: icono blanco de la carita y color de la marca
+    ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#2a211c", defaultChannel: "avisos" }],
+    ["expo-local-authentication", { faceIDPermission: "Cosland usa Face ID para desbloquear la app." }],
     "./plugins/withReleaseSigning",
     // Para que la web sepa que la app ya está instalada y no siga ofreciendo descargarla
     ["./plugins/withWebLink", { site: apiUrl }],

@@ -99,6 +99,24 @@ jobs:
         working-directory: mobile
         run: npm ci
 
+      # Avisos con la app cerrada (Firebase). Sin el secreto GOOGLE_SERVICES_JSON la app se compila igual, sin esa parte.
+      - name: Preparar Firebase
+        working-directory: mobile
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "::warning::Falta el secreto GOOGLE_SERVICES_JSON: la app no recibirá avisos estando cerrada."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > google-services.json
+          node -e '
+            const j = JSON.parse(require("fs").readFileSync("google-services.json", "utf8"));
+            const ok = (j.client || []).some((c) => c.client_info?.android_client_info?.package_name === "com.cosland.app");
+            if (!ok) { console.error("::error::El google-services.json no es de la app com.cosland.app. Revisa el nombre del paquete en Firebase."); process.exit(1); }
+            console.log("Firebase listo: proyecto " + j.project_info.project_id);
+          '
+
       - name: Generar el proyecto Android
         working-directory: mobile
         run: npx expo prebuild --platform android --no-install

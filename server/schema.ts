@@ -213,6 +213,16 @@ export const pushSubscriptions = mysqlTable("push_subscriptions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("push_endpoint_idx").on(t.endpointHash), index("push_user_idx").on(t.userId)]);
 
+// Teléfonos con la app Android instalada que aceptaron avisos (token de Firebase Cloud Messaging)
+export const deviceTokens = mysqlTable("device_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+  token: varchar("token", { length: 500 }).notNull(),
+  platform: varchar("platform", { length: 12 }).notNull().default("android"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("device_token_idx").on(t.tokenHash), index("device_user_idx").on(t.userId)]);
+
 export const settings = mysqlTable("settings", {
   key: varchar("setting_key", { length: 60 }).primaryKey(),
   value: text("value").notNull(),

@@ -1,8 +1,8 @@
-import { useState, type ReactNode } from "react";
-import { Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { useEffect, useState, type ReactNode } from "react";
+import { Platform, Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronRight, Eye, FileText, Heart, LogOut, Megaphone, Pencil, Plus, Share2, Shield, ShieldCheck, ShoppingBag, Store, Trash2, UserX, Volume2, VolumeX, Wallet } from "lucide-react-native";
+import { Bell, BellOff, ChevronRight, Eye, FileText, Fingerprint, Heart, LogOut, Megaphone, Pencil, Plus, Share2, Shield, ShieldCheck, ShoppingBag, Store, Trash2, UserX, Volume2, VolumeX, Wallet } from "lucide-react-native";
 import { formatPrice, hasStock } from "@shared/catalog";
 import { getFlag, setFlag, trpc } from "@/lib/api";
 import { openWebPage, shareLink } from "@/lib/actions";
@@ -13,6 +13,8 @@ import { PAD } from "@/ui/cards";
 import FollowersSheet from "@/ui/FollowersSheet";
 import { SupportSheet, useSupport, type Owed } from "@/ui/Support";
 import { SOUND_KEY, playWelcome } from "@/ui/Intro";
+import { lockEnabled, setLock } from "@/ui/LockGate";
+import { alertsAllowed, openAlertSettings, turnOnAlerts } from "@/lib/alerts";
 
 const STATUS: Record<string, { label: string; bg: string }> = {
   active: { label: "Publicado", bg: C.matcha }, paused: { label: "En pausa", bg: C.yuzu }, sold: { label: "Vendido", bg: C.fuji },
@@ -45,6 +47,16 @@ export default function Account() {
   });
   // La voz que acompaña al logo al abrir la app
   const [sound, setSound] = useState(() => getFlag(SOUND_KEY) !== "0");
+  // Notificaciones del teléfono: el permiso es de Android/iOS, aquí se muestra cómo está y se lleva a cambiarlo
+  const [alerts, setAlerts] = useState<boolean | null>(null);
+  useEffect(() => { alertsAllowed().then(setAlerts); }, [me?.id]);
+  const toggleAlerts = async () => {
+    if (alerts) return openAlertSettings();
+    const ok = await turnOnAlerts(); setAlerts(ok);
+    toast(ok ? "Notificaciones activadas" : "Actívalas en los ajustes del teléfono");
+  };
+  const [lock, setLockOn] = useState(lockEnabled);
+  const toggleLock = async () => { const r = await setLock(!lock); if (r.ok) setLockOn(!lock); toast(r.text); };
   const toggleSound = () => { const next = !sound; setSound(next); setFlag(SOUND_KEY, next ? "1" : "0"); if (next) playWelcome(); };
   const setStatus = trpc.listing.setStatus.useMutation({
     onSuccess: (r, v) => {
@@ -175,6 +187,8 @@ export default function Account() {
           <Row icon={<Store size={19} color={C.ink} />} label="Vitrinas" onPress={() => router.push("/vitrinas")} />
           <Row icon={<ShieldCheck size={19} color={C.ink} />} label="Consejos de compra segura" onPress={() => router.push("/compra-segura")} />
           <Row icon={sound ? <Volume2 size={19} color={C.ink} /> : <VolumeX size={19} color={C.ink} />} label={`Sonido de bienvenida: ${sound ? "activado" : "apagado"}`} onPress={toggleSound} />
+          {me && Platform.OS !== "web" && alerts !== null && <Row icon={alerts ? <Bell size={19} color={C.ink} /> : <BellOff size={19} color={C.ink} />} label={`Notificaciones: ${alerts ? "activadas" : "apagadas"}`} onPress={toggleAlerts} />}
+          {me && Platform.OS !== "web" && <Row icon={<Fingerprint size={19} color={C.ink} />} label={`Pedir huella al abrir: ${lock ? "activado" : "apagado"}`} onPress={toggleLock} />}
           {me?.role === "admin" && <Row icon={<Shield size={19} color={C.ink} />} label="Administración (en la web)" onPress={() => openWebPage("/admin")} />}
           <Row icon={<FileText size={19} color={C.ink} />} label="Términos de uso" onPress={() => openWebPage("/terminos")} />
           <Row icon={<FileText size={19} color={C.ink} />} label="Política de privacidad" onPress={() => openWebPage("/privacidad")} />

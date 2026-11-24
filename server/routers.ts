@@ -6,10 +6,10 @@ import { alias } from "drizzle-orm/mysql-core";
 import { db } from "./db";
 import { publish, touch, T } from "./realtime";
 import { appDownloadAdmin, appDownloadInfo, setAppDownloadOn } from "./appDownload";
-import { alertUser, notify, pendingCount, pushEndpointAllowed, pushPublicKey, removePushSubscription, savePushSubscription } from "./push";
+import { alertUser, fcmReady, notify, pendingCount, pushEndpointAllowed, pushPublicKey, removeDeviceToken, removePushSubscription, saveDeviceToken, savePushSubscription } from "./push";
 import { deleteImages } from "./storage";
 import {
-  users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports, contributions, settings, orders, shopPayments, pushSubscriptions,
+  users, shops, listings, favorites, follows, conversations, messages, reviews, wanted, reports, contributions, settings, orders, shopPayments, pushSubscriptions, deviceTokens,
 } from "./schema";
 import {
   router, publicProcedure, authedProcedure, adminProcedure, signSession, wantsToken, COOKIE,
@@ -170,6 +170,7 @@ const authRouter = router({
     await db.delete(orders).where(or(eq(orders.buyerId, u.id), shop ? eq(orders.shopId, shop.id) : undefined));
     await db.delete(favorites).where(eq(favorites.userId, u.id));
     await db.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, u.id));
+    await db.delete(deviceTokens).where(eq(deviceTokens.userId, u.id));
     await db.delete(follows).where(eq(follows.userId, u.id));
     await db.delete(reviews).where(eq(reviews.authorId, u.id));
     await db.delete(wanted).where(eq(wanted.userId, u.id));
@@ -1239,6 +1240,15 @@ const pushRouter = router({
   })).mutation(async ({ ctx, input }) => { await savePushSubscription(ctx.user.id, input); return { ok: true }; }),
   unsubscribe: publicProcedure.input(z.object({ endpoint: z.string().max(1000) })).mutation(async ({ ctx, input }) => {
     if (ctx.user) await removePushSubscription(input.endpoint, ctx.user.id);
+    return { ok: true };
+  }),
+  // App Android: este teléfono recibe los avisos de esta cuenta (token de Firebase)
+  registerDevice: authedProcedure.input(z.object({ token: z.string().min(20).max(500) })).mutation(async ({ ctx, input }) => {
+    await saveDeviceToken(ctx.user.id, input.token);
+    return { ok: true, ready: fcmReady };
+  }),
+  unregisterDevice: publicProcedure.input(z.object({ token: z.string().max(500) })).mutation(async ({ ctx, input }) => {
+    if (ctx.user) await removeDeviceToken(input.token, ctx.user.id);
     return { ok: true };
   }),
   // Para probar que llegan
