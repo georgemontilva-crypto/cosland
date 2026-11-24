@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { ArrowLeft, Reply, Send, X } from "lucide-react";
-import { formatPrice } from "@shared/catalog";
+import { formatPrice, thumbUrl } from "@shared/catalog";
+import { Photo } from "@/components/cards";
 import { trpc, timeAgo, whatsappLink } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
 import PushCard from "@/components/PushCard";
@@ -130,7 +131,7 @@ function Thread({ id }: { id: number }) {
               <div className="min-w-0" onClick={() => sent && setPicked((p) => (p === m.id ? null : m.id))}>
                 {m.listingId && m.listingTitle && (
                   <Link href={`/p/${m.listingId}`} className="flex items-center gap-2.5 mb-1 p-1.5 pr-3 rounded-2xl bg-paper border-[1.5px] border-ink/25">
-                    {m.listingImages?.[0] && <img src={m.listingImages[0]} alt="" className="w-11 h-11 rounded-xl object-cover" />}
+                    {m.listingImages?.[0] && <span className="w-11 h-11 rounded-xl overflow-hidden shrink-0"><Photo src={m.listingImages[0]} alt="" /></span>}
                     <span className="min-w-0"><span className="block text-sm font-bold truncate">{m.listingTitle}</span><span className="block text-xs text-cocoa">{formatPrice(m.listingPrice, m.listingDeal)}</span></span>
                   </Link>
                 )}
@@ -146,7 +147,8 @@ function Thread({ id }: { id: number }) {
                   {m.body}
                   {m.imageUrl && (
                     <a href={m.imageUrl} target="_blank" rel="noopener noreferrer" className="block mt-2 -mx-1.5 mb-0.5" aria-label="Abrir la imagen en grande" onClick={(e) => e.stopPropagation()}>
-                      <img src={m.imageUrl} alt="Imagen enviada en el chat" loading="lazy" width={224} height={288} className="rounded-2xl w-56 max-w-full h-72 object-cover border-[1.5px] border-ink/20 bg-cream" />
+                      <img src={thumbUrl(m.imageUrl)} alt="Imagen enviada en el chat" loading="lazy" decoding="async" width={224} height={288} className="rounded-2xl w-56 max-w-full h-72 object-cover border-[1.5px] border-ink/20 bg-cream"
+                        onError={(e) => { const el = e.currentTarget; if (!el.dataset.full) { el.dataset.full = "1"; el.src = m.imageUrl!; } }} />
                     </a>
                   )}
                 </div>

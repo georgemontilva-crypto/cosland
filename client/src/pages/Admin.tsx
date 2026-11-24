@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { formatPrice, shopKindLabel } from "@shared/catalog";
+import { Photo } from "@/components/cards";
 import { orderState } from "./Orders";
 import { trpc, timeAgo } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
@@ -69,7 +70,7 @@ export default function Admin() {
             <ul className="grid gap-2.5">
               {listings.data?.map((l) => (
                 <li key={l.id} className="soft p-3.5 flex flex-wrap items-center gap-3">
-                  {l.images[0] && <img src={l.images[0]} alt="" className="w-14 h-14 rounded-xl object-cover border-[1.5px] border-ink" />}
+                  {l.images[0] && <span className="w-14 h-14 rounded-xl overflow-hidden border-[1.5px] border-ink shrink-0"><Photo src={l.images[0]} alt="" /></span>}
                   <div className="min-w-0 flex-1 basis-56">
                     <Link href={`/p/${l.id}`} className="font-extrabold underline underline-offset-2 line-clamp-1">{l.title}</Link>
                     <p className="text-sm text-cocoa">{formatPrice(l.priceCents, l.deal)}, de {l.shopName}. Estado: {l.status}{l.featured ? ", destacada" : ""}</p>

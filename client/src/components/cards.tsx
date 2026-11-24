@@ -1,14 +1,17 @@
 import { Link } from "wouter";
 import { BadgeCheck, Heart, HeartHandshake, MapPin, Repeat2, Store } from "lucide-react";
-import { accentOf, categoryOf, conditionLabel, dealLabel, formatPrice, shopKindLabel } from "@shared/catalog";
+import { accentOf, categoryOf, conditionLabel, dealLabel, formatPrice, shopKindLabel, thumbUrl } from "@shared/catalog";
 import type { Card, ShopCardData } from "@/lib/trpc";
 import { useFavorites } from "@/lib/hooks";
 import { Awning, Avatar, Stars } from "./ui";
 
 // Las fotos de publicaciones van siempre en un marco cuadrado: la imagen se acerca hasta llenarlo
-export function Photo({ src, alt, accent, className = "" }: { src?: string | null; alt: string; accent?: string | null; className?: string }) {
+// Por defecto pide la miniatura (liviana); "full" pide la foto grande, para verla en detalle.
+// Si la miniatura aún no existe (fotos viejas), cae sola a la grande.
+export function Photo({ src, alt, accent, className = "", full, eager }: { src?: string | null; alt: string; accent?: string | null; className?: string; full?: boolean; eager?: boolean }) {
   return src ? (
-    <img src={src} alt={alt} loading="lazy" className={`object-cover w-full h-full ${className}`} />
+    <img src={full ? src : thumbUrl(src)} alt={alt} loading={eager ? "eager" : "lazy"} decoding="async" className={`object-cover w-full h-full ${className}`}
+      onError={(e) => { const el = e.currentTarget; if (!el.dataset.full) { el.dataset.full = "1"; el.src = src; } }} />
   ) : (
     <div className={`w-full h-full grid place-items-center ${className}`} style={{ background: accentOf(accent).hex }}>
       <img src="/gato-ink.png" alt="" className="w-2/5 opacity-70" />

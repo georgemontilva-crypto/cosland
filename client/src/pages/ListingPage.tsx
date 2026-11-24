@@ -62,7 +62,7 @@ export default function ListingPage({ id }: { id: number }) {
         {/* min-w-0: sin esto, una fila larga de miniaturas ensancha toda la página en teléfono */}
         <div className="min-w-0">
           <div className="relative aspect-square rounded-[2rem] overflow-hidden border-[1.5px] border-ink bg-oat">
-            <Photo src={l.images[photo]} alt={l.title} accent={s.accent} />
+            <Photo src={l.images[photo]} alt={l.title} accent={s.accent} full eager />
             {l.status !== "active" && (
               <div className="absolute inset-0 bg-cream/75 grid place-items-center">
                 <span className="tag !text-lg !px-5 !py-1.5 -rotate-6">{l.status === "sold" ? "Vendido" : l.status === "paused" ? "En pausa" : "Retirado"}</span>
@@ -74,7 +74,7 @@ export default function ListingPage({ id }: { id: number }) {
               {l.images.map((src, i) => (
                 <button key={src} onClick={() => setPhoto(i)} aria-label={`Foto ${i + 1}`} aria-pressed={photo === i}
                   className={`w-[4.5rem] h-[4.5rem] rounded-2xl overflow-hidden bg-oat border-[1.5px] ${photo === i ? "border-ink ring-[3px] ring-yuzu" : "border-ink/30"}`}>
-                  <img src={src} alt="" className="w-full h-full object-cover" />
+                  <Photo src={src} alt="" />
                 </button>
               ))}
             </div>

@@ -10,6 +10,7 @@ import { Image } from "expo-image";
 import { ArrowLeft, Check, ChevronDown, Star, X } from "lucide-react-native";
 import { BORDER, C, F, accentHex } from "@/lib/theme";
 import { img } from "@/lib/api";
+import { thumbUrl } from "@shared/catalog";
 import paths from "../../assets/logo/paths.json";
 
 /* ── Texto ── */
@@ -155,19 +156,27 @@ export function Awning({ accent, size = 30 }: { accent?: string | null; size?: n
   );
 }
 
+// Pide la miniatura (liviana) y, si aún no existe para esa foto, cae sola a la grande
+function useLight(src?: string | null, full?: boolean) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  return { uri: img(full || failed ? src : thumbUrl(src)), onError: () => setFailed(true) };
+}
+
 export function Avatar({ src, name, accent, size = 48 }: { src?: string | null; name: string; accent?: string | null; size?: number }) {
-  const uri = img(src);
+  const { uri, onError } = useLight(src);
   const base = { width: size, height: size, borderRadius: size / 2, borderWidth: BORDER, borderColor: C.ink } as const;
   return uri
-    ? <Image source={{ uri }} style={base} contentFit="cover" />
+    ? <Image source={{ uri }} style={base} contentFit="cover" onError={onError} />
     : <View style={[base, { backgroundColor: accentHex(accent), alignItems: "center", justifyContent: "center" }]}><T w="black" size={size * 0.42} style={{ lineHeight: size * 0.56 }}>{name.trim().charAt(0).toUpperCase()}</T></View>;
 }
 
 // Las fotos de publicaciones van siempre en un marco cuadrado: la imagen se acerca hasta llenarlo
-export function Photo({ src, accent, style }: { src?: string | null; accent?: string | null; style?: StyleProp<ViewStyle> }) {
-  const uri = img(src);
+// Por defecto pide la miniatura; "full" pide la foto grande, para verla en detalle.
+export function Photo({ src, accent, style, full }: { src?: string | null; accent?: string | null; style?: StyleProp<ViewStyle>; full?: boolean }) {
+  const { uri, onError } = useLight(src, full);
   return uri
-    ? <Image source={{ uri }} style={[{ width: "100%", height: "100%", backgroundColor: C.oat }, style as object]} contentFit="cover" transition={150} />
+    ? <Image source={{ uri }} style={[{ width: "100%", height: "100%", backgroundColor: C.oat }, style as object]} contentFit="cover" transition={150} onError={onError} />
     : <View style={[{ width: "100%", height: "100%", backgroundColor: accentHex(accent), alignItems: "center", justifyContent: "center" }, style]}><Cat width={56} /></View>;
 }
 

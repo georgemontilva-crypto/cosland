@@ -8,7 +8,7 @@ import { formatPrice } from "@shared/catalog";
 import { errText, img, timeAgo, trpc, whatsappLink } from "@/lib/api";
 import { openExternal } from "@/lib/actions";
 import { BORDER, C } from "@/lib/theme";
-import { Avatar, Btn, Empty, IconBtn, Input, Loading, T, useToast } from "@/ui/core";
+import { Avatar, Btn, Empty, IconBtn, Input, Loading, Photo, T, useToast } from "@/ui/core";
 
 type Quote = { id: number; senderId: number; body: string; hasImage: boolean; offerCents: number | null };
 // Lo que se ve de un mensaje citado
@@ -126,7 +126,7 @@ export default function Thread() {
                 {m.listingId && m.listingTitle ? (
                   <Pressable accessibilityRole="link" accessibilityLabel={`Ver ${m.listingTitle}`} onPress={() => router.push(`/p/${m.listingId}`)}
                     style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 4, padding: 6, paddingRight: 12, borderRadius: 18, backgroundColor: C.paper, borderWidth: BORDER, borderColor: C.line }}>
-                    {thumb ? <Image source={{ uri: thumb }} style={{ width: 44, height: 44, borderRadius: 12 }} contentFit="cover" /> : null}
+                    {thumb ? <View style={{ width: 44, height: 44, borderRadius: 12, overflow: "hidden" }}><Photo src={m.listingImages?.[0]} /></View> : null}
                     <View style={{ flexShrink: 1 }}><T w="bold" size={13.5} numberOfLines={1}>{m.listingTitle}</T><T size={12} color={C.cocoa}>{formatPrice(m.listingPrice, m.listingDeal)}</T></View>
                   </Pressable>
                 ) : null}
@@ -144,7 +144,7 @@ export default function Thread() {
                   <T color={mine ? C.cream : C.ink}>{m.body}</T>
                   {img(m.imageUrl) ? (
                     <Pressable accessibilityRole="imagebutton" accessibilityLabel="Abrir la imagen en grande" onPress={() => openExternal(img(m.imageUrl)!)} style={{ marginTop: 8 }}>
-                      <Image source={{ uri: img(m.imageUrl)! }} style={{ width: 220, height: 280, borderRadius: 16, backgroundColor: C.cream }} contentFit="cover" />
+                      <View style={{ width: 220, height: 280, borderRadius: 16, overflow: "hidden" }}><Photo src={m.imageUrl} /></View>
                     </Pressable>
                   ) : null}
                 </Pressable>

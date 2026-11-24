@@ -147,3 +147,8 @@ export function slugify(s: string) {
     .replace(/^-+|-+$/g, "")
     .slice(0, 40);
 }
+
+// Cada foto subida tiene una miniatura liviana al lado (mismo nombre, terminada en .t.webp).
+// Las tarjetas, listas y avatares usan esa; la foto grande solo se pide al abrir una publicación.
+const OWN_IMAGE = /\/img\/[a-z0-9]+-[0-9a-f]{16}\.webp$/;
+export const thumbUrl = <T extends string | null | undefined>(url: T): T => (url && OWN_IMAGE.test(url) ? (url.replace(/\.webp$/, ".t.webp") as T) : url);

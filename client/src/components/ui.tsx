@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Star, X } from "lucide-react";
-import { accentOf } from "@shared/catalog";
+import { accentOf, thumbUrl } from "@shared/catalog";
 
 const INK = "#2a211c";
 const PAPER = "#fffaef";
@@ -28,7 +28,8 @@ export function Awning({ accent, size = 34, className = "" }: { accent?: string 
 export function Avatar({ src, name, accent, size = 48 }: { src?: string | null; name: string; accent?: string | null; size?: number }) {
   const a = accentOf(accent);
   return src ? (
-    <img src={src} alt="" width={size} height={size} className="rounded-full object-cover border-[1.5px] border-ink shrink-0" style={{ width: size, height: size }} />
+    <img src={thumbUrl(src)} alt="" width={size} height={size} loading="lazy" decoding="async" className="rounded-full object-cover border-[1.5px] border-ink shrink-0" style={{ width: size, height: size }}
+      onError={(e) => { const el = e.currentTarget; if (!el.dataset.full) { el.dataset.full = "1"; el.src = src; } }} />
   ) : (
     <span
       aria-hidden

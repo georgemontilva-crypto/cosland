@@ -10,8 +10,8 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "./routers";
 import { createContext, userFromRequest } from "./trpc";
 import { db, runMigrations } from "./db";
-import { listings, shops, users } from "./schema";
-import { saveImage, UPLOAD_DIR, storageMode } from "./storage";
+import { listings, messages, settings, shops, users } from "./schema";
+import { saveImage, UPLOAD_DIR, storageMode, imageOrigin, backfillThumbs } from "./storage";
 import { subscribe, canSubscribe, liveStats, setVisible } from "./realtime";
 import { formatPrice } from "../shared/catalog";
 
@@ -111,6 +111,8 @@ if (fs.existsSync(path.join(publicDir, "index.html"))) {
       `<meta property="og:image" content="${esc(image)}">`,
       `<meta property="og:type" content="website">`,
       `<meta name="twitter:card" content="summary_large_image">`,
+      // Las fotos viven en otro servidor: se abre la conexión de una vez para que la primera no espere
+      ...(imageOrigin ? [`<link rel="preconnect" href="${esc(imageOrigin)}">`] : []),
     ].join("\n    ");
     return template.replace(/<!--meta-->[\s\S]*<!--\/meta-->/, tags);
   };
@@ -151,12 +153,30 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   res.status(500).json({ error: "Algo falló de nuestro lado. Intenta de nuevo." });
 });
 
+// Una sola vez: crea la miniatura de las fotos subidas antes de que existieran. Corre de fondo, sin frenar el arranque.
+async function thumbsForOldPhotos() {
+  try {
+    const [done] = await db.select().from(settings).where(eq(settings.key, "thumbs_v1")).limit(1);
+    if (done) return;
+    const urls: (string | null)[] = [
+      ...(await db.select({ images: listings.images }).from(listings)).flatMap((l) => l.images ?? []),
+      ...(await db.select({ a: shops.avatarUrl, b: shops.bannerUrl }).from(shops)).flatMap((s) => [s.a, s.b]),
+      ...(await db.select({ u: messages.imageUrl }).from(messages)).map((m) => m.u),
+    ];
+    const r = await backfillThumbs(urls.filter((u): u is string => Boolean(u)));
+    console.log(`[fotos] miniaturas: ${r.made} creadas de ${r.total} fotos, ${r.failed} con error`);
+    // Si alguna falló, se vuelve a intentar en el próximo arranque
+    if (!r.failed) await db.insert(settings).values({ key: "thumbs_v1", value: new Date().toISOString() }).onDuplicateKeyUpdate({ set: { value: new Date().toISOString() } });
+  } catch (e) { console.warn("[fotos] no se pudieron crear las miniaturas:", (e as Error).message); }
+}
+
 const port = Number(process.env.PORT ?? 3000);
 (async () => {
   await runMigrations();
   const admin = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   if (admin) await db.update(users).set({ role: "admin" }).where(eq(users.email, admin));
   app.listen(port, "0.0.0.0", () => console.log(`Cosland en el puerto ${port} (imágenes: ${storageMode})`));
+  void thumbsForOldPhotos();
 })().catch((e) => {
   console.error("No se pudo arrancar:", e);
   process.exit(1);
