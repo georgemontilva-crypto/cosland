@@ -5,7 +5,7 @@ import { and, or, eq, ne, like, desc, asc, sql, inArray, isNull, gte, lte, type 
 import { alias } from "drizzle-orm/mysql-core";
 import { db } from "./db";
 import { publish, touch, T } from "./realtime";
-import { appDownloadInfo } from "./appDownload";
+import { appDownloadAdmin, appDownloadInfo, setAppDownloadOn } from "./appDownload";
 import { alertUser, notify, pendingCount, pushEndpointAllowed, pushPublicKey, removePushSubscription, savePushSubscription } from "./push";
 import { deleteImages } from "./storage";
 import {
@@ -1186,6 +1186,14 @@ const adminRouter = router({
 
   /* Aportes: ajustes y verificación */
   supportSettings: adminProcedure.query(() => getSettings()),
+
+  // Descarga de la app para Android: el administrador decide cuándo se ofrece al público
+  appDownload: adminProcedure.query(() => appDownloadAdmin()),
+  setAppDownload: adminProcedure.input(z.object({ on: z.boolean() })).mutation(async ({ input }) => {
+    await setSetting("app_download", input.on ? "1" : "0");
+    setAppDownloadOn(input.on);
+    return appDownloadAdmin();
+  }),
 
   saveSupportSettings: adminProcedure
     .input(z.object({ enabled: z.boolean(), account: z.string().trim().max(1000), goal: z.number().min(0).max(1_000_000) }))

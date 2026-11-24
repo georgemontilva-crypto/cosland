@@ -12,7 +12,7 @@ import { createContext, userFromRequest } from "./trpc";
 import { db, runMigrations } from "./db";
 import { listings, messages, settings, shops, users } from "./schema";
 import { saveImage, UPLOAD_DIR, storageMode, imageOrigin, backfillThumbs } from "./storage";
-import { appDownloadTarget, watchAppDownload } from "./appDownload";
+import { appDownloadTarget, setAppDownloadOn, watchAppDownload } from "./appDownload";
 import { subscribe, canSubscribe, liveStats, setVisible } from "./realtime";
 import { formatPrice } from "../shared/catalog";
 
@@ -205,6 +205,7 @@ const port = Number(process.env.PORT ?? 3000);
   app.listen(port, "0.0.0.0", () => console.log(`Cosland en el puerto ${port} (imágenes: ${storageMode})`));
   void thumbsForOldPhotos();
   watchAppDownload();
+  db.select().from(settings).where(eq(settings.key, "app_download")).limit(1).then(([r]) => setAppDownloadOn(r?.value === "1")).catch(() => {});
 })().catch((e) => {
   console.error("No se pudo arrancar:", e);
   process.exit(1);

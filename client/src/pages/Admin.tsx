@@ -9,6 +9,32 @@ import { Empty, Loading, useToast } from "@/components/ui";
 
 type Tab = "resumen" | "publicaciones" | "vitrinas" | "usuarios" | "ventas" | "denuncias" | "aportes";
 
+// Descarga de la app para Android: se enciende cuando ya se probó el APK en un teléfono
+function AppDownloadSwitch() {
+  const toast = useToast();
+  const utils = trpc.useUtils();
+  const q = trpc.admin.appDownload.useQuery();
+  const set = trpc.admin.setAppDownload.useMutation({
+    onSuccess: (r) => { utils.admin.appDownload.setData(undefined, r); utils.app.invalidate(); toast(r.on ? "La descarga ya se ofrece en la web" : "La descarga quedó oculta"); },
+    onError: (e) => toast(e.message, true),
+  });
+  const d = q.data;
+  if (!d) return null;
+  return (
+    <section className="soft p-5 mt-5 flex flex-wrap items-center gap-x-5 gap-y-3" aria-label="App para Android">
+      <div className="flex-1 basis-64 min-w-0">
+        <h2 className="text-xl">App para Android</h2>
+        <p className="text-cocoa mt-1">
+          {d.on ? "El banner y el botón de descarga están a la vista de todos." : "El banner y el botón de descarga están ocultos para el público."}
+          {" "}{d.store ? "Lleva a Google Play." : d.available ? `Hay un APK publicado${d.sizeMb ? ` de ${d.sizeMb} MB` : ""}.` : "Aún no hay ningún APK publicado."}
+        </p>
+        {d.available && !d.store && <a href={d.url} className="inline-block mt-2 font-bold underline underline-offset-4">Descargar el APK para probarlo</a>}
+      </div>
+      <button className={`btn ${d.on ? "" : "btn-ink"}`} disabled={set.isPending || (!d.on && !d.available)} onClick={() => set.mutate({ on: !d.on })}>{d.on ? "Ocultar la descarga" : "Mostrar la descarga"}</button>
+    </section>
+  );
+}
+
 export default function Admin() {
   const { me, loading } = useMe();
   const toast = useToast();
@@ -62,6 +88,7 @@ export default function Admin() {
           ))}
         </dl>
       ) : <Loading />)}
+      {tab === "resumen" && <AppDownloadSwitch />}
 
       {tab === "publicaciones" && (
         <>
