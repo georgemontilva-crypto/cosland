@@ -5,7 +5,7 @@ import multer from "multer";
 import rateLimit from "express-rate-limit";
 import path from "node:path";
 import fs from "node:fs";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "./routers";
 import { createContext, userFromRequest } from "./trpc";
@@ -170,9 +170,28 @@ async function thumbsForOldPhotos() {
   } catch (e) { console.warn("[fotos] no se pudieron crear las miniaturas:", (e as Error).message); }
 }
 
+// Si cambia la dirección pública de las fotos (por ejemplo, de la de pruebas .r2.dev a un dominio propio),
+// las direcciones ya guardadas se pasan a la nueva al arrancar. Así ninguna foto vieja sigue cargando por la dirección anterior.
+async function moveImageBase() {
+  const now = process.env.R2_PUBLIC_URL?.trim().replace(/\/$/, "");
+  if (storageMode !== "r2" || !now) return;
+  try {
+    const [row] = await db.select().from(settings).where(eq(settings.key, "image_base")).limit(1);
+    const before = row?.value?.replace(/\/$/, "");
+    if (before && before !== now) {
+      const from = `${before}/`, to = `${now}/`;
+      const swap = (table: string, col: string) => db.execute(sql.raw(`UPDATE \`${table}\` SET \`${col}\` = REPLACE(\`${col}\`, ${JSON.stringify(from).replace(/"/g, "'")}, ${JSON.stringify(to).replace(/"/g, "'")}) WHERE \`${col}\` LIKE ${JSON.stringify(from + "%").replace(/"/g, "'")} OR \`${col}\` LIKE ${JSON.stringify("%" + from + "%").replace(/"/g, "'")}`));
+      for (const [t, c] of [["listings", "images"], ["shops", "avatar_url"], ["shops", "banner_url"], ["messages", "image_url"], ["contributions", "proof_url"], ["orders", "pay_proof_url"]]) await swap(t, c);
+      console.log(`[fotos] direcciones movidas de ${before} a ${now}`);
+    }
+    if (before !== now) await db.insert(settings).values({ key: "image_base", value: now }).onDuplicateKeyUpdate({ set: { value: now } });
+  } catch (e) { console.warn("[fotos] no se pudieron mover las direcciones:", (e as Error).message); }
+}
+
 const port = Number(process.env.PORT ?? 3000);
 (async () => {
   await runMigrations();
+  await moveImageBase();
   const admin = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   if (admin) await db.update(users).set({ role: "admin" }).where(eq(users.email, admin));
   app.listen(port, "0.0.0.0", () => console.log(`Cosland en el puerto ${port} (imágenes: ${storageMode})`));
