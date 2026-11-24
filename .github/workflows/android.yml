@@ -73,9 +73,15 @@ jobs:
           if ! [[ "$APP_VERSION_NAME" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
             echo "::error::La versión visible debe ser como 1.0.0"; exit 1
           fi
-          code=$(curl -s -o /dev/null -m 20 -w "%{http_code}" "https://$TWA_HOST/api/health" || true)
-          if [ "$code" != "200" ]; then
-            echo "::warning::https://$TWA_HOST/api/health respondió $code. Revisa que la dirección sea la de Cosland y que el servidor esté arriba."
+          # La app queda apuntando a esta dirección: si no es Cosland, el APK no serviría. Se reintenta por si el servidor está desplegando.
+          ok=""
+          for i in 1 2 3 4 5 6; do
+            body=$(curl -s -m 20 "https://$TWA_HOST/api/health" || true)
+            if echo "$body" | grep -q '"ok":true'; then ok=1; break; fi
+            sleep 20
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::https://$TWA_HOST/api/health no responde como Cosland. Pon la dirección correcta en mobile/release.json (campo host) y vuelve a subir."; exit 1
           fi
 
       - uses: actions/setup-node@v4
