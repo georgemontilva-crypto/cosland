@@ -9,7 +9,7 @@ import { openExternal, shareLink } from "@/lib/actions";
 import { requireLogin, useSession } from "@/lib/session";
 import { BORDER, C } from "@/lib/theme";
 import { Awning, Avatar, Btn, Chip, Empty, Field, IconBtn, Input, Loading, Screen, Stars, T, Tag, panel, soft, useToast } from "@/ui/core";
-import { Grid, PAD } from "@/ui/cards";
+import { FeaturedTag, Grid, PAD } from "@/ui/cards";
 import ContactSheet from "@/ui/ContactSheet";
 import FollowersSheet from "@/ui/FollowersSheet";
 import { Reputation, canBuy, payList } from "@/ui/Checkout";
@@ -98,6 +98,7 @@ export default function ShopScreen() {
         </View>
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 14, rowGap: 3, marginTop: 6 }}>
           <T color={C.cocoa}>{shopKindLabel(s.kind)}</T>
+          {s.featured && <FeaturedTag />}
           {s.city ? <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}><MapPin size={15} color={C.cocoa} /><T color={C.cocoa}>{s.city}{s.country ? `, ${s.country}` : ""}</T></View> : null}
           <Reputation rating={s.rating} reviewCount={s.reviewCount} sales={s.sales} />
           <Pressable accessibilityRole="button" accessibilityLabel={`${s.followers} ${s.followers === 1 ? "seguidor" : "seguidores"}, ver quiénes son`} onPress={() => setFollowers(true)} hitSlop={8}>

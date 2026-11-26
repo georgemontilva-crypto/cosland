@@ -4,14 +4,14 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Bell, BellOff, ChevronRight, Eye, FileText, Fingerprint, Heart, LogOut, Megaphone, Pencil, Plus, Share2, Shield, ShieldCheck, ShoppingBag, Store, Trash2, UserX, Volume2, VolumeX, Wallet } from "lucide-react-native";
 import { formatPrice, hasStock } from "@shared/catalog";
-import { getFlag, setFlag, trpc } from "@/lib/api";
+import { errText, getFlag, setFlag, trpc } from "@/lib/api";
 import { openWebPage, shareLink } from "@/lib/actions";
 import { useSession } from "@/lib/session";
 import { BORDER, C } from "@/lib/theme";
 import { Awning, Avatar, Btn, Empty, H1, H2, Loading, Photo, Sheet, T, Tag, panel, soft, useToast } from "@/ui/core";
 import { PAD } from "@/ui/cards";
 import FollowersSheet from "@/ui/FollowersSheet";
-import { SupportSheet, useSupport, type Owed } from "@/ui/Support";
+import { FeatureCard, SupportSheet, useSupport, type Owed } from "@/ui/Support";
 import { SOUND_KEY, playWelcome } from "@/ui/Intro";
 import { lockEnabled, setLock } from "@/ui/LockGate";
 import { alertsAllowed, openAlertSettings, turnOnAlerts } from "@/lib/alerts";
@@ -69,6 +69,11 @@ export default function Account() {
   const dues = trpc.support.mine.useQuery(undefined, { enabled: Boolean(me?.shop) && Boolean(support?.enabled) });
   const pendingDues = dues.data?.filter((c) => c.status === "pending") ?? [];
   const [owed, setOwed] = useState<Owed | null>(null);
+  const boost = trpc.support.boost.useMutation({
+    onSuccess: (r) => { utils.support.invalidate(); setOwed({ id: r.id, boost: true }); },
+    onError: (e) => toast(errText(e), true),
+  });
+  const boostWaiting = Boolean(dues.data?.some((c) => !c.listingId && c.status === "reported"));
   const items = mine.data ?? [];
   const shop = me?.shop;
 
@@ -131,13 +136,15 @@ export default function Account() {
               </View>
             </View>
 
+            <FeatureCard until={shop.featuredUntil} waiting={boostWaiting} busy={boost.isPending} onBoost={() => boost.mutate()} />
+
             {pendingDues.length > 0 && (
               <View style={{ backgroundColor: "rgba(205,228,190,0.55)", borderWidth: BORDER, borderColor: C.ink, borderRadius: 24, padding: 16, gap: 10 }}>
                 <T w="black" size={17}>Tu aporte a Cosland</T>
                 {pendingDues.slice(0, 4).map((c) => (
                   <View key={c.id} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                    <T w="bold" numberOfLines={1} style={{ flex: 1 }}>{c.listingTitle ?? "Aporte"}</T>
-                    <Btn small kind="ink" label={`Enviar ${formatPrice(c.amountCents)}`} onPress={() => setOwed({ id: c.id, title: c.listingTitle, amountCents: c.amountCents })} />
+                    <T w="bold" numberOfLines={1} style={{ flex: 1 }}>{c.listingTitle ?? (c.listingId ? "Aporte" : "Destacar mi vitrina")}</T>
+                    <Btn small kind="ink" label={`Enviar ${formatPrice(c.amountCents)}`} onPress={() => setOwed({ id: c.id, title: c.listingTitle, amountCents: c.amountCents, boost: !c.listingId })} />
                   </View>
                 ))}
               </View>

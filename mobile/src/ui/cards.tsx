@@ -1,6 +1,6 @@
 import { Pressable, View, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
-import { BadgeCheck, Heart, MapPin, Repeat2, Store } from "lucide-react-native";
+import { BadgeCheck, Heart, MapPin, Repeat2, Sparkles, Store } from "lucide-react-native";
 import { conditionLabel, dealLabel, formatPrice, shopKindLabel } from "@shared/catalog";
 import type { Card, ShopSummary } from "@/lib/api";
 import { useFavorites } from "@/lib/session";
@@ -8,6 +8,9 @@ import { BORDER, C } from "@/lib/theme";
 import { Awning, Avatar, Photo, Stars, T, Tag, panel } from "./core";
 
 export const PAD = 18;
+
+// Vitrina que apoyó a Cosland y por eso sale primero. Se marca siempre, para que quien compra sepa por qué está arriba.
+export const FeaturedTag = () => <Tag label="Destacada" bg={C.yuzu} icon={<Sparkles size={12} color={C.ink} strokeWidth={2.4} />} />;
 const GAP = 14;
 // Ancho de cada tarjeta en la cuadrícula de dos columnas
 export function useCardWidth() {
@@ -24,6 +27,7 @@ export function ListingCard({ item, width }: { item: Card; width: number }) {
       <Pressable accessibilityRole="link" accessibilityLabel={`${item.title}, ${formatPrice(item.priceCents, item.deal)}`} onPress={() => router.push(`/p/${item.id}`)} style={({ pressed }) => pressed && { opacity: 0.85 }}>
         <View style={{ width, height: width, borderRadius: 24, overflow: "hidden", borderWidth: BORDER, borderColor: C.ink, backgroundColor: C.oat }}>
           <Photo src={item.images[0]} accent={item.shopAccent} />
+          {item.shopFeatured > 0 && <View style={{ position: "absolute", left: 8, top: 8 }}><FeaturedTag /></View>}
           {item.status === "sold" && (
             <View style={{ position: "absolute", inset: 0, backgroundColor: "rgba(251,241,220,0.78)", alignItems: "center", justifyContent: "center" }}>
               <View style={{ transform: [{ rotate: "-6deg" }] }}><Tag label="Vendido" /></View>
@@ -57,10 +61,11 @@ export function Grid({ items }: { items: Card[] }) {
 }
 
 /* Tarjeta de vitrina: una fachada con su toldo */
-export function ShopCard({ shop }: { shop: Pick<ShopSummary, "handle" | "name" | "kind" | "avatarUrl" | "accent" | "city" | "verified" | "hasStore" | "listingCount" | "rating" | "reviewCount"> & { sales?: number } }) {
+export function ShopCard({ shop }: { shop: Pick<ShopSummary, "handle" | "name" | "kind" | "avatarUrl" | "accent" | "city" | "verified" | "hasStore" | "listingCount" | "rating" | "reviewCount"> & { sales?: number; featured?: number } }) {
   return (
     <Pressable accessibilityRole="link" accessibilityLabel={`Vitrina ${shop.name}`} onPress={() => router.push(`/v/${shop.handle}`)} style={({ pressed }) => [panel, pressed && { opacity: 0.85 }]}>
       <Awning accent={shop.accent} size={28} />
+      {(shop.featured ?? 0) > 0 && <View style={{ position: "absolute", right: 10, top: 10 }}><FeaturedTag /></View>}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, paddingTop: 10 }}>
         <Avatar src={shop.avatarUrl} name={shop.name} accent={shop.accent} size={56} />
         <View style={{ flex: 1 }}>

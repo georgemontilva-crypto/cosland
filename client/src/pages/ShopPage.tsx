@@ -5,7 +5,7 @@ import { shopKindLabel } from "@shared/catalog";
 import { trpc, timeAgo, whatsappLink } from "@/lib/trpc";
 import { useMe } from "@/lib/hooks";
 import { Awning, Avatar, Empty, Field, Loading, Stars, useToast } from "@/components/ui";
-import { ListingGrid } from "@/components/cards";
+import { FeaturedTag, ListingGrid } from "@/components/cards";
 import ContactModal from "@/components/ContactModal";
 import FollowersModal from "@/components/FollowersModal";
 import { SupporterBadge } from "@/components/Support";
@@ -99,6 +99,7 @@ export default function ShopPage({ handle }: { handle: string }) {
             </h1>
             <p className="text-cocoa mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
               <span>{shopKindLabel(s.kind)}</span>
+              {s.featured && <FeaturedTag />}
               {s.supporter && <SupporterBadge />}
               {s.city && <span className="inline-flex items-center gap-1"><MapPin size={15} />{s.city}{s.country ? `, ${s.country}` : ""}</span>}
               <Reputation rating={s.rating} reviewCount={s.reviewCount} sales={s.sales} />

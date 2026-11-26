@@ -43,13 +43,16 @@ async function shopOf(userId: number) {
   return s ?? null;
 }
 
+// ¿La vitrina está destacada ahora? (aportó a Cosland en los últimos días). Las fechas se guardan en UTC.
+const shopFeatured = n(sql`coalesce(${shops.featuredUntil} > utc_timestamp(), 0)`);
+
 const card = {
   id: listings.id, title: listings.title, priceCents: listings.priceCents, deal: listings.deal, kind: listings.kind,
   category: listings.category, condition: listings.condition, size: listings.size, series: listings.series,
   images: listings.images, status: listings.status, featured: listings.featured, acceptsTrade: listings.acceptsTrade,
   createdAt: listings.createdAt, views: listings.views, stock: listings.stock,
   shopId: shops.id, shopHandle: shops.handle, shopName: shops.name, shopCity: shops.city,
-  shopVerified: shops.verified, shopAccent: shops.accent,
+  shopVerified: shops.verified, shopAccent: shops.accent, shopFeatured,
 };
 
 // "shops.id" va literal: dentro de la subconsulta, un "id" sin tabla apuntaría a la tabla interna
@@ -61,7 +64,34 @@ const shopStats = {
   sales: n(sql`(select count(*) from orders o where o.shop_id = shops.id and o.status in ('delivered', 'completed'))`),
   // Apoya a Cosland: tiene algún aporte confirmado o el administrador le dio la insignia
   supporter: n(sql`((select count(*) from contributions c where c.shop_id = shops.id and c.status = 'confirmed') + shops.support_badge)`),
+  featured: shopFeatured,
 };
+
+/* ───────── Vitrinas destacadas ─────────
+   Cada aporte confirmado destaca la vitrina 15 días por dólar. Si aporta de nuevo antes de que se acabe, se suma
+   al final (no se pierden días). Se calcula siempre desde los aportes confirmados, así que si el admin deshace una
+   confirmación, los días se restan solos. */
+export const FEATURE_DAYS = 15;
+const DAY_MS = 86_400_000;
+export async function recomputeFeatured(shopId?: number) {
+  const rows = await db.select({ shopId: contributions.shopId, amountCents: contributions.amountCents, at: contributions.confirmedAt, created: contributions.createdAt })
+    .from(contributions).where(and(eq(contributions.status, "confirmed"), shopId ? eq(contributions.shopId, shopId) : undefined))
+    .orderBy(asc(contributions.shopId), asc(contributions.confirmedAt), asc(contributions.id));
+  const ends = new Map<number, number>();
+  for (const r of rows) {
+    const start = Math.max(ends.get(r.shopId) ?? 0, (r.at ?? r.created).getTime());
+    ends.set(r.shopId, start + FEATURE_DAYS * Math.max(1, Math.floor(r.amountCents / 100)) * DAY_MS);
+  }
+  if (shopId) {
+    const end = ends.get(shopId);
+    await db.update(shops).set({ featuredUntil: end ? new Date(end) : null }).where(eq(shops.id, shopId));
+    return end ? new Date(end) : null;
+  }
+  await db.update(shops).set({ featuredUntil: null }).where(isNotNull(shops.featuredUntil));
+  for (const [id, end] of ends) await db.update(shops).set({ featuredUntil: new Date(end) }).where(eq(shops.id, id));
+  return null;
+}
+const dayLabel = (d: Date) => d.toLocaleDateString("es", { day: "numeric", month: "long", timeZone: "America/Caracas" });
 
 /* ───────── Aportes: 1 dólar voluntario por venta ───────── */
 export const SUPPORT_CENTS = 100;
@@ -89,6 +119,7 @@ const authRouter = router({
       ...ctx.user, unread: pending.unread, orders: pending.orders,
       shop: shop ? {
         id: shop.id, handle: shop.handle, name: shop.name, accent: shop.accent, avatarUrl: shop.avatarUrl,
+        featuredUntil: shop.featuredUntil && shop.featuredUntil.getTime() > Date.now() ? shop.featuredUntil : null,
         followers: (await db.select({ c: n(sql`count(*)`) }).from(follows).where(eq(follows.shopId, shop.id)))[0]?.c ?? 0,
       } : null,
     };
@@ -237,7 +268,7 @@ const shopRouter = router({
     }
     const { userId, ...shop } = s.shop;
     return {
-      ...shop, listingCount: s.listingCount, followers: s.followers, rating: s.rating, reviewCount: s.reviewCount, sales: s.sales, supporter: s.supporter > 0,
+      ...shop, listingCount: s.listingCount, followers: s.followers, rating: s.rating, reviewCount: s.reviewCount, sales: s.sales, supporter: s.supporter > 0, featured: s.featured > 0,
       isFollowing, isMine: ctx.user?.id === userId, pay: await payOptions(s.shop.id, s.shop.payOnDelivery),
     };
   }),
@@ -257,7 +288,7 @@ const shopRouter = router({
         accent: shops.accent, city: shops.city, country: shops.country, verified: shops.verified, hasStore: shops.hasStore,
         ...shopStats,
       }).from(shops).where(where.length ? and(...where) : undefined)
-        .orderBy(desc(shops.verified), desc(shopStats.listingCount), desc(shops.id)).limit(60);
+        .orderBy(desc(shopFeatured), desc(shops.verified), desc(shopStats.listingCount), desc(shops.id)).limit(60);
     }),
 
   // Cómo cobra mi vitrina: los datos completos solo los ve el dueño (y quien le compra, en su pedido)
@@ -386,7 +417,7 @@ const listingRouter = router({
       term(listings.series, "serie"),
       term(listings.characterName, "personaje"),
       db.select({ handle: shops.handle, name: shops.name, avatarUrl: shops.avatarUrl, accent: shops.accent, verified: shops.verified, city: shops.city }).from(shops)
-        .where(or(has(shops.name, phrase), like(shops.handle, start))).orderBy(desc(sql`${shops.name} like ${start}`), desc(shops.verified), asc(shops.name)).limit(3),
+        .where(or(has(shops.name, phrase), like(shops.handle, start))).orderBy(desc(sql`${shops.name} like ${start}`), desc(shopFeatured), desc(shops.verified), asc(shops.name)).limit(3),
       db.select({ id: listings.id, title: listings.title, priceCents: listings.priceCents, deal: listings.deal, images: listings.images, shopName: shops.name, shopAccent: shops.accent })
         .from(listings).innerJoin(shops, eq(shops.id, listings.shopId))
         .where(and(active, ...ws.map((w) => or(has(listings.title, w), has(listings.series, w), has(listings.characterName, w))!)))
@@ -443,7 +474,7 @@ const listingRouter = router({
       const page = input.cursor ?? input.page ?? 1;
       const order = input.sort === "precio_asc" ? [asc(listings.priceCents)]
         : input.sort === "precio_desc" ? [desc(listings.priceCents)]
-        : [desc(listings.featured), desc(listings.id)];
+        : [desc(shopFeatured), desc(listings.featured), desc(listings.id)]; // primero las vitrinas destacadas
       const [items, [tot]] = await Promise.all([
         db.select(card).from(listings).innerJoin(shops, eq(shops.id, listings.shopId))
           .where(and(...where)).orderBy(...order).limit(PAGE).offset((page - 1) * PAGE),
@@ -455,13 +486,13 @@ const listingRouter = router({
   home: publicProcedure.query(async () => {
     const base = db.select(card).from(listings).innerJoin(shops, eq(shops.id, listings.shopId));
     const [recent, services, topShops, wants] = await Promise.all([
-      base.where(and(eq(listings.status, "active"), eq(listings.kind, "product"))).orderBy(desc(listings.featured), desc(listings.id)).limit(8),
+      base.where(and(eq(listings.status, "active"), eq(listings.kind, "product"))).orderBy(desc(shopFeatured), desc(listings.featured), desc(listings.id)).limit(8),
       db.select(card).from(listings).innerJoin(shops, eq(shops.id, listings.shopId))
-        .where(and(eq(listings.status, "active"), eq(listings.kind, "service"))).orderBy(desc(listings.featured), desc(listings.id)).limit(4),
+        .where(and(eq(listings.status, "active"), eq(listings.kind, "service"))).orderBy(desc(shopFeatured), desc(listings.featured), desc(listings.id)).limit(4),
       db.select({
         id: shops.id, handle: shops.handle, name: shops.name, kind: shops.kind, avatarUrl: shops.avatarUrl,
         accent: shops.accent, city: shops.city, verified: shops.verified, hasStore: shops.hasStore, ...shopStats,
-      }).from(shops).orderBy(desc(shops.verified), desc(shopStats.listingCount)).limit(8),
+      }).from(shops).orderBy(desc(shopFeatured), desc(shops.verified), desc(shopStats.listingCount)).limit(8),
       db.select().from(wanted).where(eq(wanted.status, "open")).orderBy(desc(wanted.id)).limit(3),
     ]);
     return { recent, services, shops: topShops, wanted: wants.map(({ userId, contact, ...w }) => w) };
@@ -1035,7 +1066,7 @@ const supportRouter = router({
       shops: n(sql`count(distinct ${contributions.shopId})`),
     }).from(contributions).where(and(eq(contributions.status, "confirmed"), sql`${contributions.confirmedAt} >= date_format(utc_timestamp(), '%Y-%m-01')`));
     return {
-      enabled: cfg.enabled, amountCents: SUPPORT_CENTS, goalCents: cfg.goalCents,
+      enabled: cfg.enabled, amountCents: SUPPORT_CENTS, goalCents: cfg.goalCents, featureDays: FEATURE_DAYS,
       monthCents: m?.total ?? 0, supporters: m?.shops ?? 0,
       account: ctx.user ? cfg.account : null,
     };
@@ -1049,6 +1080,21 @@ const supportRouter = router({
       listingId: contributions.listingId, listingTitle: listings.title,
     }).from(contributions).leftJoin(listings, eq(listings.id, contributions.listingId))
       .where(and(eq(contributions.shopId, shop.id), ne(contributions.status, "dismissed"))).orderBy(desc(contributions.id)).limit(100);
+  }),
+
+  // Destacar la vitrina sin esperar una venta: crea un aporte de 1 dólar para enviar (o reutiliza el que ya está abierto)
+  boost: authedProcedure.mutation(async ({ ctx }) => {
+    const shop = await shopOf(ctx.user.id);
+    if (!shop) throw fail("FORBIDDEN", "Primero crea tu vitrina.");
+    const cfg = await getSettings();
+    if (!cfg.enabled || !cfg.account.trim()) throw fail("PRECONDITION_FAILED", "Los aportes a Cosland no están abiertos ahora mismo.");
+    const [open] = await db.select({ id: contributions.id, status: contributions.status }).from(contributions)
+      .where(and(eq(contributions.shopId, shop.id), isNull(contributions.listingId), isNull(contributions.orderId), inArray(contributions.status, ["pending", "reported"])))
+      .orderBy(desc(contributions.id)).limit(1);
+    if (open?.status === "reported") throw fail("CONFLICT", "Ya enviaste un aporte para destacar tu vitrina. Se activa cuando el equipo lo confirme.");
+    if (open) return { id: open.id };
+    const [r] = await db.insert(contributions).values({ shopId: shop.id, amountCents: SUPPORT_CENTS });
+    return { id: r.insertId };
   }),
 
   // El vendedor avisa que ya envió el dólar (con referencia o comprobante, si quiere)
@@ -1212,6 +1258,8 @@ const adminRouter = router({
       id: contributions.id, status: contributions.status, amountCents: contributions.amountCents, reference: contributions.reference,
       proofUrl: contributions.proofUrl, createdAt: contributions.createdAt, reportedAt: contributions.reportedAt, confirmedAt: contributions.confirmedAt,
       shopName: shops.name, shopHandle: shops.handle, listingTitle: listings.title,
+      boost: sql<boolean>`(${contributions.listingId} is null and ${contributions.orderId} is null)`.mapWith(Boolean),
+      featuredUntil: shops.featuredUntil,
     }).from(contributions)
       .leftJoin(shops, eq(shops.id, contributions.shopId)).leftJoin(listings, eq(listings.id, contributions.listingId))
       .where(ne(contributions.status, "dismissed"))
@@ -1222,9 +1270,16 @@ const adminRouter = router({
     .mutation(async ({ input }) => {
       await db.update(contributions).set({ status: input.status, confirmedAt: input.status === "confirmed" ? new Date() : null })
         .where(eq(contributions.id, input.id));
-      const [own] = await db.select({ shopId: shops.id, userId: shops.userId }).from(contributions)
+      const [own] = await db.select({ shopId: shops.id, userId: shops.userId, before: shops.featuredUntil }).from(contributions)
         .innerJoin(shops, eq(shops.id, contributions.shopId)).where(eq(contributions.id, input.id)).limit(1);
-      touch(T.support, T.admin, own && T.shop(own.shopId));
+      if (own) {
+        const until = await recomputeFeatured(own.shopId);
+        // Se le avisa al vendedor cuando el aporte le suma días
+        if (input.status === "confirmed" && until && until.getTime() > Math.max(Date.now(), own.before?.getTime() ?? 0)) {
+          alertUser(own.userId, { title: "Tu vitrina está destacada", body: `Recibimos tu aporte, gracias. Tu vitrina sale primero en las búsquedas hasta el ${dayLabel(until)}.`, url: "/mi-vitrina", tag: "destacada" });
+        }
+      }
+      touch(T.support, T.admin, T.feed, T.shops, own && T.shop(own.shopId));
       if (own) publish([own.userId], "me", {});
       return { ok: true };
     }),

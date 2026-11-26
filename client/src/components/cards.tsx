@@ -1,9 +1,14 @@
 import { Link } from "wouter";
-import { BadgeCheck, Heart, HeartHandshake, MapPin, Repeat2, Store } from "lucide-react";
+import { BadgeCheck, Heart, HeartHandshake, MapPin, Repeat2, Sparkles, Store } from "lucide-react";
 import { accentOf, categoryOf, conditionLabel, dealLabel, formatPrice, shopKindLabel, thumbUrl } from "@shared/catalog";
 import type { Card, ShopCardData } from "@/lib/trpc";
 import { useFavorites } from "@/lib/hooks";
 import { Awning, Avatar, Stars } from "./ui";
+
+// Vitrina que apoyó a Cosland y por eso sale primero. Se marca siempre, para que quien compra sepa por qué está arriba.
+export function FeaturedTag({ className = "" }: { className?: string }) {
+  return <span className={`tag ${className}`} style={{ background: "#f8e29c" }} title="Esta vitrina apoyó a Cosland y sale primero por unos días"><Sparkles size={12} strokeWidth={2.4} />Destacada</span>;
+}
 
 // Las fotos de publicaciones van siempre en un marco cuadrado: la imagen se acerca hasta llenarlo
 // Por defecto pide la miniatura (liviana); "full" pide la foto grande, para verla en detalle.
@@ -28,6 +33,7 @@ export function ListingCard({ item }: { item: Card }) {
       <Link href={`/p/${item.id}`} className="block rounded-[1.6rem]">
         <div className="relative aspect-square rounded-[1.6rem] overflow-hidden border-[1.5px] border-ink bg-oat">
           <Photo src={item.images[0]} alt={item.title} accent={item.shopAccent} className="transition-transform duration-300 group-hover:scale-[1.03]" />
+          {item.shopFeatured > 0 && <FeaturedTag className="absolute left-2.5 top-2.5" />}
           {item.status === "sold" && (
             <div className="absolute inset-0 bg-cream/75 grid place-items-center"><span className="tag !text-base !px-4 !py-1 -rotate-6">Vendido</span></div>
           )}
@@ -67,10 +73,11 @@ export function ListingGrid({ items }: { items: Card[] }) {
 }
 
 /* Tarjeta de vitrina: una fachada con su toldo */
-export function ShopCard({ shop }: { shop: Pick<ShopCardData, "handle" | "name" | "kind" | "avatarUrl" | "accent" | "city" | "verified" | "hasStore" | "listingCount" | "rating" | "reviewCount"> & { supporter?: number; sales?: number } }) {
+export function ShopCard({ shop }: { shop: Pick<ShopCardData, "handle" | "name" | "kind" | "avatarUrl" | "accent" | "city" | "verified" | "hasStore" | "listingCount" | "rating" | "reviewCount"> & { supporter?: number; sales?: number; featured?: number } }) {
   return (
-    <Link href={`/v/${shop.handle}`} className="block h-full panel overflow-hidden transition-transform hover:-translate-y-1">
+    <Link href={`/v/${shop.handle}`} className="relative block h-full panel overflow-hidden transition-transform hover:-translate-y-1">
       <Awning accent={shop.accent} size={30} />
+      {(shop.featured ?? 0) > 0 && <FeaturedTag className="absolute right-3 top-3" />}
       <div className="px-4 pb-4 pt-3 flex items-center gap-3">
         <Avatar src={shop.avatarUrl} name={shop.name} accent={shop.accent} size={56} />
         <div className="min-w-0">

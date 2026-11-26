@@ -7,7 +7,7 @@ import { Awning, Avatar, Empty, Loading, useToast } from "@/components/ui";
 import { Photo } from "@/components/cards";
 import ShopForm from "./ShopForm";
 import FollowersModal from "@/components/FollowersModal";
-import { SupportMeter, SupportModal, useSupport } from "@/components/Support";
+import { FeatureCard, SupportMeter, SupportModal, useSupport } from "@/components/Support";
 import { useState } from "react";
 
 const STATUS: Record<string, { label: string; bg: string }> = {
@@ -21,7 +21,13 @@ export default function Dashboard() {
   const mine = trpc.listing.mine.useQuery(undefined, { enabled: Boolean(me?.shop) });
   const support = useSupport();
   const dues = trpc.support.mine.useQuery(undefined, { enabled: Boolean(me?.shop) && Boolean(support?.enabled) });
-  const [owed, setOwed] = useState<null | { id: number; title?: string | null }>(null);
+  const [owed, setOwed] = useState<null | { id: number; title?: string | null; boost?: boolean }>(null);
+  const boost = trpc.support.boost.useMutation({
+    onSuccess: (r) => { utils.support.invalidate(); setOwed({ id: r.id, boost: true }); },
+    onError: (e) => toast(e.message, true),
+  });
+  // Aporte para destacar que ya envió y espera confirmación
+  const boostWaiting = Boolean(dues.data?.some((c) => !c.listingId && c.status === "reported"));
   const setStatus = trpc.listing.setStatus.useMutation({
     onSuccess: (r, v) => {
       utils.listing.invalidate(); utils.support.invalidate(); toast("Publicación actualizada");
@@ -81,6 +87,7 @@ export default function Dashboard() {
 
       {support?.enabled && (
         <section className="mt-8 grid gap-4 lg:grid-cols-2 items-start" aria-label="Aportes a Cosland">
+          <FeatureCard className="lg:col-span-2" until={shop.featuredUntil} waiting={boostWaiting} busy={boost.isPending} onBoost={() => boost.mutate()} />
           <SupportMeter />
           {(dues.data?.length ?? 0) > 0 && (
             <div className="soft p-5">
@@ -88,8 +95,8 @@ export default function Dashboard() {
               <ul className="grid gap-2.5 mt-3">
                 {dues.data!.slice(0, 6).map((c) => (
                   <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                    <span className="min-w-0 flex-1 basis-40 truncate font-bold">{c.listingTitle ?? "Aporte"}</span>
-                    {c.status === "pending" && <button className="btn btn-sm btn-matcha" onClick={() => setOwed({ id: c.id, title: c.listingTitle })}>Enviar {formatPrice(c.amountCents)}</button>}
+                    <span className="min-w-0 flex-1 basis-40 truncate font-bold">{c.listingTitle ?? (c.listingId ? "Aporte" : "Destacar mi vitrina")}</span>
+                    {c.status === "pending" && <button className="btn btn-sm btn-matcha" onClick={() => setOwed({ id: c.id, title: c.listingTitle, boost: !c.listingId })}>Enviar {formatPrice(c.amountCents)}</button>}
                     {c.status === "reported" && <span className="tag" style={{ background: "#f8e29c" }}>Por confirmar</span>}
                     {c.status === "confirmed" && <span className="tag" style={{ background: "#cde4be" }}>Recibido, gracias</span>}
                   </li>
@@ -154,7 +161,7 @@ export default function Dashboard() {
         </ul>
       )}
       {followers && <FollowersModal shopId={shop.id} mine onClose={() => setFollowers(false)} />}
-      {owed && <SupportModal id={owed.id} title={owed.title} onClose={() => setOwed(null)} />}
+      {owed && <SupportModal id={owed.id} title={owed.title} boost={owed.boost} onClose={() => setOwed(null)} />}
     </div>
   );
 }

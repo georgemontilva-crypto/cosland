@@ -71,6 +71,13 @@
       "when": 1795543434018,
       "tag": "0009_colorful_mac_gargan",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1795663746906,
+      "tag": "0010_powerful_white_tiger",
+      "breakpoints": true
     }
   ]
 }

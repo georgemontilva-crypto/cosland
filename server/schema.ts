@@ -48,6 +48,8 @@ export const shops = mysqlTable("shops", {
   supportBadge: boolean("support_badge").notNull().default(false),
   // Acepta que le paguen al momento de la entrega
   payOnDelivery: boolean("pay_on_delivery").notNull().default(true),
+  // Destacada (primera en búsquedas y en Vitrinas) hasta esta fecha: cada dólar confirmado a Cosland suma 15 días
+  featuredUntil: timestamp("featured_until"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("shops_handle_idx").on(t.handle), uniqueIndex("shops_user_idx").on(t.userId)]);
 

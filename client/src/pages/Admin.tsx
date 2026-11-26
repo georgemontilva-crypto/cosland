@@ -210,17 +210,20 @@ export default function Admin() {
 
           <div>
             <h2 className="text-xl mb-3">Aportes de los vendedores</h2>
-            {contribs.isLoading ? <Loading /> : !contribs.data?.length ? <Empty title="Aún no hay aportes">Aparecen aquí cuando un vendedor marca vendida una publicación que lleva el dólar para Cosland.</Empty> : (
+            {contribs.isLoading ? <Loading /> : !contribs.data?.length ? <Empty title="Aún no hay aportes">Aparecen aquí cuando un vendedor vende algo que lleva el dólar para Cosland o pide destacar su vitrina. Al confirmar uno, su vitrina sale destacada 15 días por dólar.</Empty> : (
               <ul className="grid gap-2.5">
                 {contribs.data.map((c) => (
                   <li key={c.id} className={`soft p-4 flex flex-wrap items-center gap-3 ${c.status === "confirmed" ? "opacity-70" : ""}`}>
                     <div className="min-w-0 flex-1 basis-56">
                       <p className="font-extrabold">{formatPrice(c.amountCents)} de {c.shopName ?? "una vitrina eliminada"}</p>
                       <p className="text-sm text-cocoa">
-                        {c.listingTitle ? `Por “${c.listingTitle}”. ` : ""}
+                        {c.boost ? "Para destacar su vitrina. " : c.listingTitle ? `Por “${c.listingTitle}”. ` : ""}
                         {c.status === "pending" ? "Aún no lo envía." : c.status === "reported" ? `Dice que lo envió ${timeAgo(c.reportedAt ?? c.createdAt)}.` : `Confirmado ${timeAgo(c.confirmedAt ?? c.createdAt)}.`}
                         {c.reference ? ` Referencia: ${c.reference}.` : ""}
                       </p>
+                      {c.featuredUntil && new Date(c.featuredUntil).getTime() > Date.now() && (
+                        <p className="text-sm font-bold">Vitrina destacada hasta el {new Date(c.featuredUntil).toLocaleDateString("es", { day: "numeric", month: "long" })}.</p>
+                      )}
                       {c.proofUrl && <a href={c.proofUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-bold underline">Ver comprobante</a>}
                     </div>
                     <div className="flex flex-wrap gap-1.5">

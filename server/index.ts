@@ -7,7 +7,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { eq, sql } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { appRouter } from "./routers";
+import { appRouter, recomputeFeatured } from "./routers";
 import { createContext, userFromRequest } from "./trpc";
 import { db, runMigrations } from "./db";
 import { listings, messages, settings, shops, users } from "./schema";
@@ -204,6 +204,8 @@ const port = Number(process.env.PORT ?? 3000);
   if (admin) await db.update(users).set({ role: "admin" }).where(eq(users.email, admin));
   app.listen(port, "0.0.0.0", () => console.log(`Cosland en el puerto ${port} (imágenes: ${storageMode})`));
   void thumbsForOldPhotos();
+  // Fechas de vitrinas destacadas a partir de los aportes confirmados (también los de antes de esta función)
+  void recomputeFeatured().catch((e) => console.warn("[destacadas]", (e as Error).message));
   watchAppDownload();
   db.select().from(settings).where(eq(settings.key, "app_download")).limit(1).then(([r]) => setAppDownloadOn(r?.value === "1")).catch(() => {});
 })().catch((e) => {
