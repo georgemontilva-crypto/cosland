@@ -173,7 +173,7 @@ export default function Account() {
                         {l.status === "active" && (hasStock(l.kind, l.deal)
                           ? <Btn small kind="matcha" label={l.stock > 1 ? "Vendí una" : "Vendido"} disabled={sellOne.isPending} onPress={() => sellOne.mutate({ id: l.id })} />
                           // Servicios, encargos y alquileres no se agotan: solo se anota la venta cuando llevan el dólar para Cosland
-                          : l.supportsApp && support?.enabled ? <Btn small kind="matcha" label="Anotar venta" disabled={sellOne.isPending} onPress={() => sellOne.mutate({ id: l.id })} /> : null)}
+                          : support?.enabled ? <Btn small kind="matcha" label="Anotar venta" disabled={sellOne.isPending} onPress={() => sellOne.mutate({ id: l.id })} /> : null)}
                         {l.status === "active" && <Btn small label="Pausar" onPress={() => setStatus.mutate({ id: l.id, status: "paused" })} />}
                         {l.status !== "active" && <Btn small label="Volver a publicar" onPress={() => setStatus.mutate({ id: l.id, status: "active" })} />}
                         <Btn small kind="ghost" label="Eliminar" icon={<Trash2 size={15} color={C.berry} />} onPress={() => setRemoving({ id: l.id, title: l.title })} />

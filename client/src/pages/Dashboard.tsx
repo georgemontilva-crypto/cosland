@@ -149,8 +149,8 @@ export default function Dashboard() {
                   <Link href={`/editar/${l.id}`} className="btn btn-sm">Editar</Link>
                   {l.status === "active" && (hasStock(l.kind, l.deal)
                     ? <button className="btn btn-sm btn-matcha" disabled={sellOne.isPending} onClick={() => sellOne.mutate({ id: l.id })}>{l.stock > 1 ? "Vendí una" : "Vendido"}</button>
-                    // Servicios, encargos y alquileres no se agotan: solo se anota la venta cuando llevan el dólar para Cosland
-                    : l.supportsApp && support?.enabled && <button className="btn btn-sm btn-matcha" disabled={sellOne.isPending} onClick={() => sellOne.mutate({ id: l.id })}>Anotar venta</button>)}
+                    // Servicios, encargos y alquileres no se agotan: se anota la venta para ofrecer el aporte a Cosland
+                    : support?.enabled && <button className="btn btn-sm btn-matcha" disabled={sellOne.isPending} onClick={() => sellOne.mutate({ id: l.id })}>Anotar venta</button>)}
                   {l.status === "active" && <button className="btn btn-sm" onClick={() => setStatus.mutate({ id: l.id, status: "paused" })}>Pausar</button>}
                   {l.status !== "active" && <button className="btn btn-sm" onClick={() => setStatus.mutate({ id: l.id, status: "active" })}>Volver a publicar</button>}
                   <button className="btn btn-sm btn-ghost !text-berry" onClick={() => { if (confirm(`¿Eliminar "${l.title}"? No se puede deshacer.`)) setStatus.mutate({ id: l.id, status: "removed" }); }}>Eliminar</button>

@@ -103,7 +103,7 @@ export default function Orders() {
       toast(said[v.action]);
       // Con el pago en mano, el vendedor ve a dónde enviar el dólar de Cosland
       const sold = q.data?.selling.find((o) => o.id === v.id);
-      if (r.contributionId) setOwed({ id: r.contributionId, title: sold?.title, amountCents: 100 * (sold?.quantity ?? 1) });
+      if (r.contributionId) setOwed({ id: r.contributionId, title: sold?.title, amountCents: r.contributionCents ?? 100 });
       // Al confirmar que llegó, se pide la reseña de una vez
       const got = q.data?.buying.find((o) => o.id === v.id);
       if (v.action === "receive" && got && !got.reviewed) setReviewing({ shopId: got.shopId, shopName: got.shopName });

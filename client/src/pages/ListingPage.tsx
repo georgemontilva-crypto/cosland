@@ -101,7 +101,7 @@ export default function ListingPage({ id }: { id: number }) {
               <Link href={`/editar/${l.id}`} className="btn btn-ink"><Pencil size={17} />Editar</Link>
               {l.status === "active" && (stocked
                 ? <button className="btn btn-matcha" disabled={sellOne.isPending} onClick={() => sellOne.mutate({ id: l.id })}>{l.stock > 1 ? "Vendí una" : "Marcar como vendido"}</button>
-                : l.supportsApp && support?.enabled && <button className="btn btn-matcha" disabled={sellOne.isPending} onClick={() => sellOne.mutate({ id: l.id })}>Anotar una venta</button>)}
+                : support?.enabled && <button className="btn btn-matcha" disabled={sellOne.isPending} onClick={() => sellOne.mutate({ id: l.id })}>Anotar una venta</button>)}
               {l.status !== "active" && <button className="btn" onClick={() => setStatus.mutate({ id: l.id, status: "active" })}>Volver a publicar</button>}
               <button className="btn" onClick={() => share(l.title, toast)}><Share2 size={17} />Compartir</button>
             </div>

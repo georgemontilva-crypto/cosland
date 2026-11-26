@@ -97,7 +97,7 @@ export default function ListingScreen() {
                 : hasStock(l.kind, l.deal)
                   ? <Btn label="Marcar como vendido" kind="matcha" onPress={() => setStatus.mutate({ id: l.id, status: "sold" })} />
                   // Servicios, encargos y alquileres no se agotan: solo se anota la venta cuando llevan el dólar para Cosland
-                  : l.supportsApp && support?.enabled ? <Btn label="Anotar una venta" kind="matcha" onPress={() => setStatus.mutate({ id: l.id, status: "sold" })} /> : null}
+                  : support?.enabled ? <Btn label="Anotar una venta" kind="matcha" onPress={() => setStatus.mutate({ id: l.id, status: "sold" })} /> : null}
             </View>
           )}
 

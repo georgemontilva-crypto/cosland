@@ -38,7 +38,7 @@ export function FeatureCard({ until, waiting, onBoost, busy }: { until: Date | s
 // Después de vender: a dónde enviar el dólar y cómo avisar que ya se envió
 export function SupportSheet({ owed, onClose }: { owed: Owed | null; onClose: () => void }) {
   // El formulario nace limpio cada vez que se abre
-  return <Sheet open={Boolean(owed)} onClose={onClose} title={owed?.boost ? "Destaca tu vitrina" : "Envía tu dólar a Cosland"}>{owed ? <SupportForm key={owed.id} owed={owed} onClose={onClose} /> : null}</Sheet>;
+  return <Sheet open={Boolean(owed)} onClose={onClose} title={owed?.boost ? "Destaca tu vitrina" : "¿Aportas a Cosland?"}>{owed ? <SupportForm key={owed.id} owed={owed} onClose={onClose} /> : null}</Sheet>;
 }
 
 function SupportForm({ owed, onClose }: { owed: Owed; onClose: () => void }) {
@@ -51,20 +51,24 @@ function SupportForm({ owed, onClose }: { owed: Owed; onClose: () => void }) {
   const report = trpc.support.report.useMutation({ onSuccess: () => { toast("Gracias por apoyar a Cosland"); done(); }, onError: (e) => toast(errText(e), true) });
   const skip = trpc.support.skip.useMutation({ onSuccess: done });
   const copy = async () => { try { await Clipboard.setStringAsync(s?.account ?? ""); toast("Datos copiados"); } catch { toast("No se pudo copiar. Mantén presionado el texto para copiarlo.", true); } };
-  const amount = owed.amountCents ? `${formatPrice(owed.amountCents)} de esta venta` : `${formatPrice(s?.amountCents ?? 100)} por venta`;
+  const amount = formatPrice(owed.amountCents ?? s?.amountCents ?? 100);
+  const send = () => {
+    if (!proof && !reference.trim()) return toast("Sube la captura del pago o escribe la referencia, para que el equipo pueda verificarlo.", true);
+    report.mutate({ id: owed.id, reference: reference.trim() || null, proofUrl: proof });
+  };
   return (
       <View style={{ gap: 14 }}>
         {owed.boost
           ? <T>Envía {formatPrice(s?.amountCents ?? 100)} a Cosland y avísanos aquí. Cuando el equipo lo confirme, tu vitrina sale primero en las búsquedas durante {s?.featureDays ?? 15} días.</T>
-          : <T>{owed.title ? `Vendiste "${owed.title}". ` : ""}Con {amount} ayudas a que Cosland siga funcionando para toda la comunidad.</T>}
+          : <T>{owed.title ? `Vendiste "${owed.title}". ` : ""}Con {amount} ayudas a que Cosland siga funcionando para toda la comunidad, y tu vitrina sale destacada {(s?.featureDays ?? 15) * Math.max(1, Math.floor((owed.amountCents ?? 100) / 100))} días cuando el equipo lo confirme. Es voluntario.</T>}
         <View style={{ backgroundColor: C.paper, borderWidth: BORDER, borderColor: C.ink, borderRadius: 22, padding: 16, gap: 10 }}>
           <T size={13.5} w="bold" color={C.cocoa}>Datos para enviarlo</T>
           <T w="bold" selectable>{s?.account || "El equipo de Cosland aún no ha publicado la cuenta."}</T>
           {s?.account ? <Btn small label="Copiar datos" icon={<Copy size={15} color={C.ink} />} style={{ alignSelf: "flex-start" }} onPress={copy} /> : null}
         </View>
-        <Field label="Número de referencia (opcional)"><Input value={reference} onChangeText={setReference} maxLength={120} accessibilityLabel="Número de referencia del aporte" /></Field>
-        <Field label="Comprobante (opcional)"><SinglePhoto value={proof} onChange={setProof} label="Subir comprobante" /></Field>
-        <Btn label="Ya lo envié" kind="ink" busy={report.isPending} onPress={() => report.mutate({ id: owed.id, reference: reference.trim() || null, proofUrl: proof })} />
+        <Field label="Captura del pago" hint="Súbela para que el equipo la vea y confirme tu aporte."><SinglePhoto value={proof} onChange={setProof} label="Subir comprobante" /></Field>
+        <Field label={proof ? "Número de referencia (opcional)" : "Número de referencia (si no tienes captura)"}><Input value={reference} onChangeText={setReference} maxLength={120} accessibilityLabel="Número de referencia del aporte" /></Field>
+        <Btn label="Ya lo envié" kind="ink" busy={report.isPending} onPress={send} />
         <Btn label="Lo envío después" onPress={onClose} />
         <Pressable accessibilityRole="button" onPress={() => skip.mutate({ id: owed.id })} hitSlop={8} style={{ alignSelf: "center", paddingVertical: 4 }}>
           <T size={13.5} color={C.cocoa} style={{ textDecorationLine: "underline" }}>{owed.boost ? "Ya no quiero destacarla" : "Esta vez no voy a aportar"}</T>

@@ -583,11 +583,11 @@ const listingRouter = router({
         ...(stocked && input.status === "active" && l.stock < 1 ? { stock: 1 } : {}),
       }).where(eq(listings.id, l.id));
 
-      // Al vender (por fuera de un pedido) algo que llevaba el dólar para Cosland, queda un aporte pendiente
+      // Al vender (por fuera de un pedido) se le ofrece aportar el dólar a Cosland. Es voluntario: puede decir que no.
       let contributionId: number | null = null;
       const [open] = await db.select({ id: contributions.id, status: contributions.status }).from(contributions)
         .where(and(eq(contributions.listingId, l.id), isNull(contributions.orderId))).orderBy(desc(contributions.id)).limit(1);
-      if (input.status === "sold" && l.supportsApp && (await getSettings()).enabled) {
+      if (input.status === "sold" && (await getSettings()).enabled) {
         if (open?.status === "pending") contributionId = open.id;
         else {
           const [r] = await db.insert(contributions).values({ shopId: shop.id, listingId: l.id, amountCents: SUPPORT_CENTS });
@@ -614,7 +614,8 @@ const listingRouter = router({
     const sold = stocked && left === 0;
     if (stocked) await db.update(listings).set({ stock: left, ...(sold ? { status: "sold" as const } : {}) }).where(eq(listings.id, l.id));
     let contributionId: number | null = null;
-    if (l.supportsApp && (await getSettings()).enabled) {
+    // Toda venta ofrece el aporte, lleve o no el dólar sumado al precio
+    if ((await getSettings()).enabled) {
       const [r] = await db.insert(contributions).values({ shopId: shop.id, listingId: l.id, amountCents: SUPPORT_CENTS });
       contributionId = r.insertId;
     }
@@ -936,10 +937,11 @@ const orderRouter = router({
       let say = "", note = "", contributionId: number | null = null;
       // El dólar para Cosland queda pendiente en cuanto el vendedor tiene el pago: al confirmarlo o, si paga al recibir, al entregar
       const owe = async (): Promise<number | null> => {
-        if (!l?.supportsApp || !(await getSettings()).enabled) return null;
+        if (!l || !(await getSettings()).enabled) return null;
         const [had] = await db.select({ id: contributions.id, status: contributions.status }).from(contributions).where(eq(contributions.orderId, o.id)).limit(1);
         if (had) return had.status === "pending" ? had.id : null;
-        const [r] = await db.insert(contributions).values({ shopId: o.shopId, listingId: o.listingId, orderId: o.id, amountCents: SUPPORT_CENTS * o.quantity });
+        // Si el dólar iba sumado al precio, es uno por unidad; si no, se ofrece uno por la venta
+        const [r] = await db.insert(contributions).values({ shopId: o.shopId, listingId: o.listingId, orderId: o.id, amountCents: SUPPORT_CENTS * (l.supportsApp ? o.quantity : 1) });
         return r.insertId;
       };
       const who = isSeller ? row.shopName : ctx.user.name.split(" ")[0];
@@ -986,7 +988,9 @@ const orderRouter = router({
       publish([isSeller ? o.buyerId : row.ownerId], "order", { id: o.id, text: note });
       if (note) notify(isSeller ? o.buyerId : row.ownerId, { title: isSeller ? "Tu compra" : "Tu venta", body: note, url: "/pedidos", tag: `order-${o.id}` });
       touch(T.listing(o.listingId), T.shop(o.shopId), T.shops, T.feed, T.admin, T.support);
-      return { ok: true, contributionId, shopId: o.shopId };
+      // Cuánto es el aporte (uno por unidad si iba sumado al precio, uno por la venta si no)
+      const [due] = contributionId ? await db.select({ c: contributions.amountCents }).from(contributions).where(eq(contributions.id, contributionId)).limit(1) : [];
+      return { ok: true, contributionId, contributionCents: due?.c ?? null, shopId: o.shopId };
     }),
 });
 
@@ -1104,6 +1108,8 @@ const supportRouter = router({
       const shop = await shopOf(ctx.user.id);
       const [c] = shop ? await db.select().from(contributions).where(and(eq(contributions.id, input.id), eq(contributions.shopId, shop.id))).limit(1) : [];
       if (!c || c.status === "confirmed") throw fail("NOT_FOUND", "No encontramos ese aporte pendiente.");
+      // Sin comprobante ni referencia el equipo no tiene cómo verificarlo
+      if (!input.proofUrl && !input.reference?.trim()) throw fail("BAD_REQUEST", "Sube la captura del pago o escribe la referencia, para que el equipo pueda verificarlo.");
       await db.update(contributions).set({ status: "reported", reference: input.reference, proofUrl: input.proofUrl ?? null, reportedAt: new Date() })
         .where(eq(contributions.id, c.id));
       touch(T.admin);

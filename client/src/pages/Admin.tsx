@@ -224,7 +224,12 @@ export default function Admin() {
                       {c.featuredUntil && new Date(c.featuredUntil).getTime() > Date.now() && (
                         <p className="text-sm font-bold">Vitrina destacada hasta el {new Date(c.featuredUntil).toLocaleDateString("es", { day: "numeric", month: "long" })}.</p>
                       )}
-                      {c.proofUrl && <a href={c.proofUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-bold underline">Ver comprobante</a>}
+                      {c.proofUrl && (
+                        <a href={c.proofUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-3 text-sm font-bold underline" aria-label="Ver el comprobante en grande">
+                          <img src={c.proofUrl} alt="Comprobante del pago" className="w-24 h-24 object-cover rounded-2xl border-[1.5px] border-ink bg-oat" loading="lazy" />
+                          Ver comprobante
+                        </a>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {c.status !== "confirmed" && <button className="btn btn-sm btn-matcha" onClick={() => setContribution.mutate({ id: c.id, status: "confirmed" })}>Confirmar recibido</button>}

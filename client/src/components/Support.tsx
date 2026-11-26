@@ -64,17 +64,30 @@ export function SupportModal({ id, title, amountCents, boost, onClose }: { id: n
   const report = trpc.support.report.useMutation({ onSuccess: () => { toast("Gracias por apoyar a Cosland"); done(); }, onError: (e) => toast(e.message, true) });
   const skip = trpc.support.skip.useMutation({ onSuccess: done });
   return (
-    <Modal title={boost ? "Destaca tu vitrina" : "Envía tu dólar a Cosland"} onClose={onClose}>
+    <Modal title={boost ? "Destaca tu vitrina" : "¿Aportas a Cosland?"} onClose={onClose}>
       {boost ? (
         <p>Envía {formatPrice(s?.amountCents ?? 100)} a Cosland y avísanos aquí. Cuando el equipo lo confirme, tu vitrina sale primero en las búsquedas durante {s?.featureDays ?? 15} días.</p>
-      ) : <p>{title ? <>Vendiste “{title}”. </> : null}Con {amountCents ? `${formatPrice(amountCents)} de esta venta` : `${formatPrice(s?.amountCents ?? 100)} por venta`} ayudas a que Cosland siga funcionando para toda la comunidad.</p>}
+      ) : (
+        <p>
+          {title ? <>Vendiste “{title}”. </> : null}Con {formatPrice(amountCents ?? s?.amountCents ?? 100)} ayudas a que Cosland siga funcionando para toda la comunidad,
+          y tu vitrina sale destacada {(s?.featureDays ?? 15) * Math.max(1, Math.floor((amountCents ?? 100) / 100))} días cuando el equipo lo confirme. Es voluntario.
+        </p>
+      )}
       <div className="mt-4 rounded-[1.4rem] bg-paper border-[1.5px] border-ink p-4">
         <p className="text-sm font-bold text-cocoa">Datos para enviarlo</p>
         <p className="mt-1 whitespace-pre-line font-bold break-words">{s?.account || "El equipo de Cosland aún no ha publicado la cuenta."}</p>
       </div>
-      <form className="grid gap-4 mt-5" onSubmit={(e) => { e.preventDefault(); report.mutate({ id, reference, proofUrl: proof }); }}>
-        <Field label="Número de referencia (opcional)"><input className="input" maxLength={120} value={reference} onChange={(e) => setReference(e.target.value)} /></Field>
-        <div><span className="field-label">Comprobante (opcional)</span><SinglePhoto value={proof} onChange={setProof} label="Subir comprobante" /></div>
+      <form className="grid gap-4 mt-5" onSubmit={(e) => {
+        e.preventDefault();
+        if (!proof && !reference.trim()) return toast("Sube la captura del pago o escribe la referencia, para que el equipo pueda verificarlo.", true);
+        report.mutate({ id, reference, proofUrl: proof });
+      }}>
+        <div>
+          <span className="field-label">Captura del pago</span>
+          <span className="field-hint block mb-2">Súbela para que el equipo la vea y confirme tu aporte.</span>
+          <SinglePhoto value={proof} onChange={setProof} label="Subir comprobante" />
+        </div>
+        <Field label={proof ? "Número de referencia (opcional)" : "Número de referencia (si no tienes captura)"}><input className="input" maxLength={120} value={reference} onChange={(e) => setReference(e.target.value)} /></Field>
         <button className="btn btn-ink" disabled={report.isPending}>Ya lo envié</button>
       </form>
       <div className="flex flex-wrap justify-between gap-3 mt-4 text-sm">
